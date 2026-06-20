@@ -1,0 +1,144 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
+
+:root {
+  --theater-burgundy: #7C1D3F;
+  --theater-gold: #D4AF37;
+  --theater-ink: #1A1A2E;
+  --theater-parchment: #E8E4DE;
+  --font-serif: 'Noto Serif SC', Georgia, serif;
+  --font-sans: 'Noto Sans SC', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  background-color: var(--theater-ink);
+  color: var(--theater-parchment);
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-theater-gold-500 text-theater-ink-900 font-medium rounded-md 
+           hover:bg-theater-gold-400 transition-all duration-200 
+           shadow-inner-gold border border-theater-gold-600/50;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-theater-burgundy-700 text-theater-parchment-100 font-medium rounded-md 
+           hover:bg-theater-burgundy-600 transition-all duration-200 
+           border border-theater-burgundy-500/30;
+  }
+
+  .btn-ghost {
+    @apply px-4 py-2 bg-transparent text-theater-parchment-200 font-medium rounded-md 
+           hover:bg-theater-ink-600 transition-all duration-200
+           border border-transparent hover:border-theater-ink-500;
+  }
+
+  .btn-danger {
+    @apply px-4 py-2 bg-theater-burgundy-500 text-white font-medium rounded-md 
+           hover:bg-theater-burgundy-400 transition-all duration-200
+           border border-theater-burgundy-400/50;
+  }
+
+  .card {
+    @apply bg-theater-ink-700/80 backdrop-blur-sm rounded-lg border border-theater-ink-500/50 
+           shadow-lg transition-all duration-300;
+  }
+
+  .card-hoverable {
+    @apply card hover:shadow-card-hover hover:border-theater-burgundy-500/30 
+           hover:-translate-y-0.5 cursor-pointer;
+  }
+
+  .input-field {
+    @apply w-full px-3 py-2 bg-theater-ink-800 border border-theater-ink-500 rounded-md 
+           text-theater-parchment-100 placeholder-theater-ink-400
+           focus:outline-none focus:border-theater-gold-500 focus:ring-1 focus:ring-theater-gold-500/50
+           transition-all duration-200;
+  }
+
+  .input-label {
+    @apply block text-sm font-medium text-theater-parchment-300 mb-1;
+  }
+
+  .section-title {
+    @apply font-serif text-xl font-semibold text-theater-parchment-100 mb-4
+           flex items-center gap-2;
+  }
+
+  .section-title::before {
+    content: '';
+    @apply w-1 h-5 bg-theater-gold-500 rounded-full;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--theater-ink-500) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--theater-ink-500);
+    border-radius: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: var(--theater-gold-500);
+  }
+
+  .gantt-grid {
+    background-image: 
+      linear-gradient(to right, rgba(107, 116, 135, 0.1) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(107, 116, 135, 0.1) 1px, transparent 1px);
+    background-size: 60px 48px;
+  }
+
+  .divider-gold {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--theater-gold), transparent);
+  }
+
+  .text-shadow-gold {
+    text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+  }
+}
+
+@layer utilities {
+  .bg-theater-pattern {
+    background-color: var(--theater-ink);
+    background-image: 
+      radial-gradient(ellipse at 20% 10%, rgba(124, 29, 63, 0.2) 0%, transparent 40%),
+      radial-gradient(ellipse at 80% 90%, rgba(212, 175, 55, 0.1) 0%, transparent 40%);
+  }
+
+  .text-gradient-gold {
+    background: linear-gradient(135deg, #D4AF37 0%, #F6E09F 50%, #D4AF37 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
