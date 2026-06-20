@@ -7,6 +7,8 @@ import {
   Prop,
   CONFLICT_WEIGHTS,
   RehearsalRoom,
+  LeavePeriod,
+  Role,
 } from '../types';
 import {
   isTimeOverlap,
@@ -288,6 +290,61 @@ function checkAvailabilityConflicts(
   return conflicts;
 }
 
+function checkLeaveConflicts(
+  scheduledScenes: ScheduledScene[],
+  scenes: Scene[],
+  actors: Actor[],
+  leavePeriods: LeavePeriod[],
+  productionId: string,
+  roles: Role[]
+): Conflict[] {
+  const conflicts: Conflict[] = [];
+
+  for (const ss of scheduledScenes) {
+    const scene = scenes.find((s) => s.id === ss.sceneId);
+    if (!scene) continue;
+
+    const actorsInScene = getActorsForScene(scene, actors, productionId);
+    const ssStart = ss.startTime;
+    const ssEnd = ss.endTime;
+
+    for (const actor of actorsInScene) {
+      const actorLeaves = leavePeriods.filter((lp) => lp.actorId === actor.id);
+
+      for (const leave of actorLeaves) {
+        if (isTimeOverlap(ssStart, ssEnd, leave.startTime, leave.endTime)) {
+          const overlappingRoles = roles.filter((r) =>
+            scene.roleIds.includes(r.id) &&
+            actor.roleAssignments.some(
+              (ra) => ra.roleId === r.id && ra.productionId === productionId
+            )
+          );
+
+          const roleWeight = overlappingRoles.length > 0 ? overlappingRoles.length : 1;
+
+          conflicts.push({
+            id: generateId(),
+            type: 'leave',
+            severity: 'error',
+            description: `演员「${actor.name}」请假时段与「${scene.name}」冲突${overlappingRoles.length > 0 ? `（缺席角色：${overlappingRoles.map((r) => r.name).join('、')}，加权×${roleWeight}）` : ''}`,
+            involvedScheduledSceneIds: [ss.id],
+            details: {
+              actorId: actor.id,
+              actorName: actor.name,
+              sceneId: scene.id,
+              leaveId: leave.id,
+              roleIds: overlappingRoles.map((r) => r.id),
+              roleWeight,
+            },
+          });
+        }
+      }
+    }
+  }
+
+  return conflicts;
+}
+
 export function detectAllConflicts(
   scheduledScenes: ScheduledScene[],
   scenes: Scene[],
@@ -295,7 +352,9 @@ export function detectAllConflicts(
   props: Prop[],
   rooms: RehearsalRoom[],
   availability: AvailabilitySlot[],
-  productionId: string
+  productionId: string,
+  leavePeriods: LeavePeriod[] = [],
+  roles: Role[] = []
 ): Conflict[] {
   return [
     ...checkActorConflicts(scheduledScenes, scenes, actors, productionId),
@@ -309,6 +368,14 @@ export function detectAllConflicts(
       availability,
       productionId
     ),
+    ...checkLeaveConflicts(
+      scheduledScenes,
+      scenes,
+      actors,
+      leavePeriods,
+      productionId,
+      roles
+    ),
   ];
 }
 
@@ -316,6 +383,10 @@ export function calculateConflictScore(conflicts: Conflict[]): number {
   return conflicts.reduce((score, conflict) => {
     const weight = CONFLICT_WEIGHTS[conflict.type];
     const severityMultiplier = conflict.severity === 'error' ? 1 : 0.3;
-    return score + weight * severityMultiplier;
+    const roleWeight =
+      conflict.type === 'leave' && conflict.details?.roleWeight
+        ? (conflict.details.roleWeight as number)
+        : 1;
+    return score + weight * severityMultiplier * roleWeight;
   }, 0);
 }

@@ -62,7 +62,7 @@ export interface ScheduledScene {
   endTime: string;
 }
 
-export type ConflictType = 'actor' | 'prop' | 'dependency' | 'room' | 'availability';
+export type ConflictType = 'actor' | 'prop' | 'dependency' | 'room' | 'availability' | 'leave';
 export type ConflictSeverity = 'error' | 'warning';
 
 export interface Conflict {
@@ -103,6 +103,14 @@ export interface GenerateOptions {
   breakDurationMinutes: number;
 }
 
+export interface LeavePeriod {
+  id: string;
+  actorId: string;
+  startTime: string;
+  endTime: string;
+  reason?: string;
+}
+
 export interface FullData {
   version: string;
   exportedAt: string;
@@ -112,6 +120,7 @@ export interface FullData {
   props: Prop[];
   actors: Actor[];
   availability: AvailabilitySlot[];
+  leavePeriods: LeavePeriod[];
   rooms: RehearsalRoom[];
   schedules: Schedule[];
 }
@@ -128,6 +137,7 @@ export interface ConflictWeightConfig {
   dependency: number;
   room: number;
   availability: number;
+  leave: number;
 }
 
 export const CONFLICT_WEIGHTS: ConflictWeightConfig = {
@@ -136,6 +146,7 @@ export const CONFLICT_WEIGHTS: ConflictWeightConfig = {
   dependency: 80,
   room: 70,
   availability: 5,
+  leave: 150,
 };
 
 export const OPTIMAL_GAP_MINUTES = 15;

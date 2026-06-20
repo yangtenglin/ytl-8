@@ -12,10 +12,12 @@ import {
   Plus,
   Settings,
   Trash2,
+  UserX,
+  RefreshCw,
 } from 'lucide-react';
-import { format, addDays, parseISO } from 'date-fns';
-import { GenerateOptions } from '../types';
-import { formatDisplayDate } from '../utils/time';
+import { format, addDays, parseISO, isSameDay } from 'date-fns';
+import { GenerateOptions, LeavePeriod } from '../types';
+import { formatDisplayDate, formatDisplayDateTime, formatDate, formatTime } from '../utils/time';
 
 export default function SchedulerPage() {
   const {
@@ -25,6 +27,7 @@ export default function SchedulerPage() {
     actors,
     rooms,
     availability,
+    leavePeriods,
     schedules,
     currentScheduleId,
     setCurrentSchedule,
@@ -40,9 +43,23 @@ export default function SchedulerPage() {
     setZoomLevel,
     isGenerating,
     addScheduledScene,
+    addLeavePeriod,
+    updateLeavePeriod,
+    deleteLeavePeriod,
+    recalculateScheduleScores,
+    roles,
   } = useAppStore();
 
   const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [editingLeaveId, setEditingLeaveId] = useState<string | null>(null);
+  const [leaveForm, setLeaveForm] = useState({
+    actorId: '',
+    date: selectedDate,
+    startTime: '18:00',
+    endTime: '22:00',
+    reason: '',
+  });
   const [generateOptions, setGenerateOptions] = useState<GenerateOptions>({
     productionId: currentProductionId || '',
     startDate: selectedDate,
@@ -100,6 +117,70 @@ export default function SchedulerPage() {
       '18:00'
     );
   };
+
+  const handleOpenLeaveModal = (leave?: LeavePeriod) => {
+    if (leave) {
+      setEditingLeaveId(leave.id);
+      setLeaveForm({
+        actorId: leave.actorId,
+        date: formatDate(leave.startTime),
+        startTime: formatTime(leave.startTime),
+        endTime: formatTime(leave.endTime),
+        reason: leave.reason || '',
+      });
+    } else {
+      setEditingLeaveId(null);
+      setLeaveForm({
+        actorId: actors[0]?.id || '',
+        date: selectedDate,
+        startTime: '18:00',
+        endTime: '22:00',
+        reason: '',
+      });
+    }
+    setShowLeaveModal(true);
+  };
+
+  const handleSaveLeave = () => {
+    if (!leaveForm.actorId) return;
+
+    const startISO = `${leaveForm.date}T${leaveForm.startTime}:00`;
+    const endISO = `${leaveForm.date}T${leaveForm.endTime}:00`;
+
+    if (editingLeaveId) {
+      updateLeavePeriod(editingLeaveId, {
+        actorId: leaveForm.actorId,
+        startTime: startISO,
+        endTime: endISO,
+        reason: leaveForm.reason,
+      });
+    } else {
+      addLeavePeriod({
+        actorId: leaveForm.actorId,
+        startTime: startISO,
+        endTime: endISO,
+        reason: leaveForm.reason,
+      });
+    }
+    setShowLeaveModal(false);
+    setEditingLeaveId(null);
+  };
+
+  const handleDeleteLeave = (id: string) => {
+    deleteLeavePeriod(id);
+  };
+
+  const handleRecalculate = () => {
+    if (currentScheduleId) {
+      recalculateScheduleScores(currentScheduleId);
+    }
+  };
+
+  const filteredLeavePeriods = useMemo(() => {
+    return leavePeriods.filter((lp) =>
+      isSameDay(parseISO(lp.startTime), parseISO(selectedDate))
+    );
+  }, [leavePeriods, selectedDate]);
 
   if (!currentProductionId) {
     return (
@@ -182,13 +263,29 @@ export default function SchedulerPage() {
           </button>
 
           {currentSchedule && (
-            <button
-              onClick={handleAddScene}
-              className="btn-secondary flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              添加场次
-            </button>
+            <>
+              <button
+                onClick={handleAddScene}
+                className="btn-secondary flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                添加场次
+              </button>
+              <button
+                onClick={() => handleOpenLeaveModal()}
+                className="btn-secondary flex items-center gap-2"
+              >
+                <UserX className="w-4 h-4" />
+                请假登记
+              </button>
+              <button
+                onClick={handleRecalculate}
+                className="btn-ghost flex items-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                重算
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -236,10 +333,11 @@ export default function SchedulerPage() {
               onMoveScene={moveScheduledScene}
               onDeleteScene={deleteScheduledScene}
               zoomLevel={zoomLevel}
+              leavePeriods={leavePeriods}
             />
 
-            <div className="flex items-center justify-between text-sm text-theater-ink-400 px-2">
-              <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-theater-ink-400 px-2">
+              <div className="flex flex-wrap items-center gap-4">
                 <span className="flex items-center gap-1">
                   <div className="w-3 h-3 rounded bg-theater-burgundy-700 border border-theater-burgundy-500" />
                   已安排场次
@@ -248,9 +346,65 @@ export default function SchedulerPage() {
                   <div className="w-3 h-3 rounded bg-theater-burgundy-500 border border-theater-burgundy-400 animate-conflict-blink" />
                   冲突场次
                 </span>
+                <span className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-red-600/60 border border-red-400" />
+                  请假时段
+                </span>
               </div>
-              <span>拖拽场次块可以调整时间和排练室</span>
+              <span>拖拽场次块可以调整时间和排练室，拖到请假时段区域将触发红色警示</span>
             </div>
+
+            {filteredLeavePeriods.length > 0 && (
+              <div className="card p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-serif font-semibold text-theater-parchment-200 flex items-center gap-2">
+                    <UserX className="w-4 h-4 text-red-400" />
+                    当日请假登记
+                  </h4>
+                </div>
+                <div className="space-y-2">
+                  {filteredLeavePeriods.map((leave) => {
+                    const actor = actors.find((a) => a.id === leave.actorId);
+                    return (
+                      <div
+                        key={leave.id}
+                        className="flex items-center justify-between p-3 rounded-lg bg-red-500/10 border border-red-500/30"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-red-500/30 flex items-center justify-center">
+                            <UserX className="w-4 h-4 text-red-300" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-theater-parchment-100">
+                              {actor?.name || '未知演员'}
+                            </p>
+                            <p className="text-xs text-theater-ink-400">
+                              {formatTime(leave.startTime)} -{' '}
+                              {formatTime(leave.endTime)}
+                              {leave.reason && ` · ${leave.reason}`}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleOpenLeaveModal(leave)}
+                            className="p-1.5 rounded hover:bg-theater-ink-700 text-theater-parchment-300 hover:text-white transition-colors"
+                          >
+                            <Settings className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteLeave(leave.id)}
+                            className="p-1.5 rounded hover:bg-red-500/20 text-theater-parchment-300 hover:text-red-300 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="lg:col-span-1">
@@ -375,6 +529,101 @@ export default function SchedulerPage() {
               </button>
               <button onClick={handleGenerate} className="btn-primary flex-1">
                 开始生成
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLeaveModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="card p-6 w-full max-w-md animate-fade-in">
+            <h3 className="text-xl font-serif font-semibold text-theater-parchment-100 mb-4 flex items-center gap-2">
+              <UserX className="w-5 h-5 text-red-400" />
+              {editingLeaveId ? '编辑请假' : '新增请假登记'}
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="input-label">选择演员</label>
+                <select
+                  className="input-field"
+                  value={leaveForm.actorId}
+                  onChange={(e) =>
+                    setLeaveForm({ ...leaveForm, actorId: e.target.value })
+                  }
+                >
+                  {actors.map((actor) => (
+                    <option key={actor.id} value={actor.id}>
+                      {actor.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="input-label">请假日期</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={leaveForm.date}
+                  onChange={(e) =>
+                    setLeaveForm({ ...leaveForm, date: e.target.value })
+                  }
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="input-label">开始时间</label>
+                  <input
+                    type="time"
+                    className="input-field"
+                    value={leaveForm.startTime}
+                    onChange={(e) =>
+                      setLeaveForm({ ...leaveForm, startTime: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="input-label">结束时间</label>
+                  <input
+                    type="time"
+                    className="input-field"
+                    value={leaveForm.endTime}
+                    onChange={(e) =>
+                      setLeaveForm({ ...leaveForm, endTime: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="input-label">请假原因（可选）</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="如：病假、私事等"
+                  value={leaveForm.reason}
+                  onChange={(e) =>
+                    setLeaveForm({ ...leaveForm, reason: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowLeaveModal(false);
+                  setEditingLeaveId(null);
+                }}
+                className="btn-ghost flex-1"
+              >
+                取消
+              </button>
+              <button onClick={handleSaveLeave} className="btn-primary flex-1">
+                {editingLeaveId ? '保存修改' : '确认登记'}
               </button>
             </div>
           </div>

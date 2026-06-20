@@ -12,8 +12,10 @@ import {
   GenerateOptions,
   FullData,
   ScheduledScene,
+  LeavePeriod,
 } from '../types';
-import { generateId, formatDateTime, addMinutes, combineDateAndTime } from '../utils/time';
+import { generateId, formatDateTime, combineDateAndTime } from '../utils/time';
+import { addMinutes } from 'date-fns';
 import { generateScheduleCandidates, recalculateScheduleScores } from '../engine/scheduler';
 import {
   sampleProductions,
@@ -35,6 +37,7 @@ interface AppState {
   props: Prop[];
   actors: Actor[];
   availability: AvailabilitySlot[];
+  leavePeriods: LeavePeriod[];
   rooms: RehearsalRoom[];
   currentProductionId: string | null;
   schedules: Schedule[];
@@ -76,6 +79,10 @@ interface AppState {
     actorId: string,
     slots: Omit<AvailabilitySlot, 'id' | 'actorId'>[]
   ) => void;
+
+  addLeavePeriod: (period: Omit<LeavePeriod, 'id'>) => void;
+  updateLeavePeriod: (id: string, updates: Partial<LeavePeriod>) => void;
+  deleteLeavePeriod: (id: string) => void;
 
   addRoom: (room: Omit<RehearsalRoom, 'id'>) => void;
   updateRoom: (id: string, updates: Partial<RehearsalRoom>) => void;
@@ -127,6 +134,7 @@ function loadInitialState() {
         props: data.props || [],
         actors: data.actors || [],
         availability: data.availability || [],
+        leavePeriods: data.leavePeriods || [],
         rooms: data.rooms || [],
         schedules: data.schedules || [],
       };
@@ -142,6 +150,7 @@ function loadInitialState() {
     props: sampleProps,
     actors: sampleActors,
     availability: sampleAvailability,
+    leavePeriods: [],
     rooms: sampleRooms,
     schedules: [],
   };
@@ -177,6 +186,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       props: state.props,
       actors: state.actors,
       availability: state.availability,
+      leavePeriods: state.leavePeriods,
       rooms: state.rooms,
       schedules: state.schedules,
     };
@@ -248,11 +258,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   deleteScene: (id) => {
     set((state) => ({
-      scenes: state.scenes.filter((s) => s.id !== id),
-      scenes: state.scenes.map((s) => ({
-        ...s,
-        dependsOnSceneIds: s.dependsOnSceneIds.filter((depId) => depId !== id),
-      })),
+      scenes: state.scenes
+        .filter((s) => s.id !== id)
+        .map((s) => ({
+          ...s,
+          dependsOnSceneIds: s.dependsOnSceneIds.filter((depId) => depId !== id),
+        })),
     }));
     get().saveToStorage();
   },
@@ -329,6 +340,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       actors: state.actors.filter((a) => a.id !== id),
       availability: state.availability.filter((av) => av.actorId !== id),
+      leavePeriods: state.leavePeriods.filter((lp) => lp.actorId !== id),
     }));
     get().saveToStorage();
   },
@@ -366,6 +378,41 @@ export const useAppStore = create<AppState>((set, get) => ({
     get().saveToStorage();
   },
 
+  addLeavePeriod: (period) => {
+    set((state) => ({
+      leavePeriods: [...state.leavePeriods, { ...period, id: generateId() }],
+    }));
+    const state = get();
+    if (state.currentScheduleId) {
+      get().recalculateScheduleScores(state.currentScheduleId);
+    }
+    get().saveToStorage();
+  },
+
+  updateLeavePeriod: (id, updates) => {
+    set((state) => ({
+      leavePeriods: state.leavePeriods.map((lp) =>
+        lp.id === id ? { ...lp, ...updates } : lp
+      ),
+    }));
+    const state = get();
+    if (state.currentScheduleId) {
+      get().recalculateScheduleScores(state.currentScheduleId);
+    }
+    get().saveToStorage();
+  },
+
+  deleteLeavePeriod: (id) => {
+    set((state) => ({
+      leavePeriods: state.leavePeriods.filter((lp) => lp.id !== id),
+    }));
+    const state = get();
+    if (state.currentScheduleId) {
+      get().recalculateScheduleScores(state.currentScheduleId);
+    }
+    get().saveToStorage();
+  },
+
   addRoom: (room) => {
     set((state) => ({
       rooms: [...state.rooms, { ...room, id: generateId() }],
@@ -398,7 +445,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       state.actors,
       state.props,
       state.rooms,
-      state.availability
+      state.availability,
+      state.leavePeriods
     );
 
     set({ candidates, isGenerating: false });
@@ -467,7 +515,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       state.actors,
       state.props,
       state.rooms,
-      state.availability
+      state.availability,
+      state.leavePeriods
     );
 
     set({
@@ -505,7 +554,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       state.actors,
       state.props,
       state.rooms,
-      state.availability
+      state.availability,
+      state.leavePeriods
     );
 
     set({
@@ -543,7 +593,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       state.actors,
       state.props,
       state.rooms,
-      state.availability
+      state.availability,
+      state.leavePeriods
     );
 
     set({
@@ -585,7 +636,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       state.actors,
       state.props,
       state.rooms,
-      state.availability
+      state.availability,
+      state.leavePeriods
     );
 
     set({
@@ -607,7 +659,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       state.actors,
       state.props,
       state.rooms,
-      state.availability
+      state.availability,
+      state.leavePeriods
     );
 
     set({
@@ -628,6 +681,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       props: data.props || [],
       actors: data.actors || [],
       availability: data.availability || [],
+      leavePeriods: data.leavePeriods || [],
       rooms: data.rooms || [],
       schedules: data.schedules || [],
       currentProductionId: data.productions?.[0]?.id || null,
@@ -648,6 +702,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       props: state.props,
       actors: state.actors,
       availability: state.availability,
+      leavePeriods: state.leavePeriods,
       rooms: state.rooms,
       schedules: state.schedules,
     };
@@ -661,6 +716,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       props: sampleProps,
       actors: sampleActors,
       availability: sampleAvailability,
+      leavePeriods: [],
       rooms: sampleRooms,
       schedules: [],
       currentProductionId: sampleProductions[0]?.id || null,
@@ -678,6 +734,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       props: [],
       actors: [],
       availability: [],
+      leavePeriods: [],
       rooms: [],
       schedules: [],
       currentProductionId: null,

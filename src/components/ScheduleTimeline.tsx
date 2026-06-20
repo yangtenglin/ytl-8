@@ -9,6 +9,7 @@ import {
   DragEndEvent,
   DragOverlay,
   DragStartEvent,
+  DragMoveEvent,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -26,14 +27,18 @@ import {
   RehearsalRoom,
   Conflict,
   Actor,
+  LeavePeriod,
 } from '../types';
 import {
   formatDisplayDate,
   formatTime,
   getDatesInRange,
   getTimeMinutesFromMidnight,
+  isTimeOverlap,
+  combineDateAndTime,
 } from '../utils/time';
-import { Clock, User, Package, AlertTriangle, GripVertical, X } from 'lucide-react';
+import { addMinutes as addMinutesUtil } from 'date-fns';
+import { Clock, User, Package, AlertTriangle, GripVertical, X, UserX } from 'lucide-react';
 
 interface ScheduleTimelineProps {
   scheduledScenes: ScheduledScene[];
@@ -51,6 +56,7 @@ interface ScheduleTimelineProps {
   ) => void;
   onDeleteScene: (scheduledSceneId: string) => void;
   zoomLevel: 'day' | 'week';
+  leavePeriods?: LeavePeriod[];
 }
 
 const TIMELINE_START_HOUR = 9;
@@ -191,8 +197,10 @@ export default function ScheduleTimeline({
   onMoveScene,
   onDeleteScene,
   zoomLevel,
+  leavePeriods = [],
 }: ScheduleTimelineProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [dragOverLeave, setDragOverLeave] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -229,6 +237,12 @@ export default function ScheduleTimeline({
     return ids;
   }, [conflicts]);
 
+  const getLeavePeriodsForDate = (date: string) => {
+    return leavePeriods.filter((lp) =>
+      isSameDay(parseISO(lp.startTime), parseISO(date))
+    );
+  };
+
   const getActorsForScheduledScene = (scheduledScene: ScheduledScene) => {
     const scene = scenes.find((s) => s.id === scheduledScene.sceneId);
     if (!scene) return [];
@@ -243,10 +257,91 @@ export default function ScheduleTimeline({
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
+    setDragOverLeave(false);
+  };
+
+  const checkLeaveConflict = (
+    date: string,
+    timeStr: string,
+    scene: Scene | undefined
+  ): boolean => {
+    if (!scene) return false;
+    const startTime = combineDateAndTime(date, timeStr);
+    const endTime = addMinutesUtil(startTime, scene.durationMinutes);
+    const actorsInScene = actors.filter((actor) =>
+      actor.roleAssignments.some(
+        (ra) =>
+          ra.productionId === scene.productionId &&
+          scene.roleIds.includes(ra.roleId)
+      )
+    );
+
+    const dateLeaves = getLeavePeriodsForDate(date);
+    for (const leave of dateLeaves) {
+      if (
+        actorsInScene.some((a) => a.id === leave.actorId) &&
+        isTimeOverlap(startTime, endTime, leave.startTime, leave.endTime)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const handleDragMove = (event: DragMoveEvent) => {
+    const { active, over } = event;
+    if (!over) {
+      setDragOverLeave(false);
+      return;
+    }
+
+    const overData = over.data.current;
+    if (!overData || overData.type !== 'drop-zone') {
+      setDragOverLeave(false);
+      return;
+    }
+
+    const { date, roomId } = overData;
+    if (!date || !roomId) {
+      setDragOverLeave(false);
+      return;
+    }
+
+    const scheduledScene = scheduledScenes.find(
+      (ss) => ss.id === active.id
+    );
+    if (!scheduledScene) {
+      setDragOverLeave(false);
+      return;
+    }
+    const scene = scenes.find((s) => s.id === scheduledScene.sceneId);
+
+    const overRect = document
+      .getElementById(`dropzone-${date}-${roomId}`)
+      ?.getBoundingClientRect();
+
+    if (!overRect) {
+      setDragOverLeave(false);
+      return;
+    }
+
+    const relativeY =
+      (event.activatorEvent as MouseEvent).clientY - overRect.top;
+    const minutesFromStart = Math.round(
+      relativeY / PIXELS_PER_MINUTE / 30
+    ) * 30;
+    const totalMinutes = TIMELINE_START_HOUR * 60 + minutesFromStart;
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    const timeStr = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+
+    const hasConflict = checkLeaveConflict(date, timeStr, scene);
+    setDragOverLeave(hasConflict);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveId(null);
+    setDragOverLeave(false);
 
     const { active, over } = event;
     if (!over) return;
@@ -262,12 +357,11 @@ export default function ScheduleTimeline({
     const { date, roomId } = overData;
     if (!date || !roomId) return;
 
-    const rect = (event.activatorEvent as MouseEvent).target?.getBoundingClientRect?.();
     const overRect = document
       .getElementById(`dropzone-${date}-${roomId}`)
       ?.getBoundingClientRect();
 
-    if (!overRect || !rect) return;
+    if (!overRect) return;
 
     const relativeY =
       (event.activatorEvent as MouseEvent).clientY - overRect.top;
@@ -303,6 +397,7 @@ export default function ScheduleTimeline({
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragStart={handleDragStart}
+        onDragMove={handleDragMove}
         onDragEnd={handleDragEnd}
       >
         <div className="overflow-x-auto scrollbar-thin">
@@ -358,61 +453,99 @@ export default function ScheduleTimeline({
                 ))}
               </div>
 
-              {dates.map((date) => (
-                <div
-                  key={date}
-                  className="flex-1 min-w-[280px] border-r border-theater-ink-600 last:border-r-0"
-                >
-                  <div className="flex h-full">
-                    {rooms.map((room) => {
-                      const roomScenes = scheduledScenes.filter(
-                        (ss) =>
-                          ss.roomId === room.id &&
-                          isSameDay(parseISO(ss.startTime), parseISO(date))
-                      );
+              {dates.map((date) => {
+                const dateLeavePeriods = getLeavePeriodsForDate(date);
+                return (
+                  <div
+                    key={date}
+                    className="flex-1 min-w-[280px] border-r border-theater-ink-600 last:border-r-0"
+                  >
+                    <div className="flex h-full">
+                      {rooms.map((room) => {
+                        const roomScenes = scheduledScenes.filter(
+                          (ss) =>
+                            ss.roomId === room.id &&
+                            isSameDay(parseISO(ss.startTime), parseISO(date))
+                        );
 
-                      return (
-                        <div
-                          key={room.id}
-                          id={`dropzone-${date}-${room.id}`}
-                          data-type="drop-zone"
-                          data-date={date}
-                          data-room-id={room.id}
-                          className="relative flex-1 border-r border-theater-ink-600/30 last:border-r-0 gantt-grid"
-                          style={{ height: `${timelineHeight}px` }}
-                        >
-                          <SortableContext
-                            items={roomScenes.map((ss) => ss.id)}
-                            strategy={rectSortingStrategy}
+                        return (
+                          <div
+                            key={room.id}
+                            id={`dropzone-${date}-${room.id}`}
+                            data-type="drop-zone"
+                            data-date={date}
+                            data-room-id={room.id}
+                            className="relative flex-1 border-r border-theater-ink-600/30 last:border-r-0 gantt-grid"
+                            style={{ height: `${timelineHeight}px` }}
                           >
-                            {roomScenes.map((scheduledScene) => (
-                              <DraggableSceneBlock
-                                key={scheduledScene.id}
-                                scheduledScene={scheduledScene}
-                                scene={scenes.find(
-                                  (s) => s.id === scheduledScene.sceneId
-                                )}
-                                room={rooms.find(
-                                  (r) => r.id === scheduledScene.roomId
-                                )}
-                                hasConflict={conflictingSceneIds.has(
-                                  scheduledScene.id
-                                )}
-                                actorsInScene={getActorsForScheduledScene(
-                                  scheduledScene
-                                )}
-                                onDelete={() =>
-                                  onDeleteScene(scheduledScene.id)
-                                }
-                              />
-                            ))}
-                          </SortableContext>
-                        </div>
-                      );
-                    })}
+                            {dateLeavePeriods.map((leave) => {
+                              const leaveStartMinutes =
+                                getTimeMinutesFromMidnight(
+                                  formatTime(leave.startTime)
+                                ) - TIMELINE_START_HOUR * 60;
+                              const leaveEndMinutes =
+                                getTimeMinutesFromMidnight(
+                                  formatTime(leave.endTime)
+                                ) - TIMELINE_START_HOUR * 60;
+                              const leaveDuration =
+                                leaveEndMinutes - leaveStartMinutes;
+                              const actor = actors.find(
+                                (a) => a.id === leave.actorId
+                              );
+
+                              return (
+                                <div
+                                  key={leave.id}
+                                  className="absolute left-1 right-1 rounded-md pointer-events-none border border-red-500/50 bg-red-600/20 overflow-hidden"
+                                  style={{
+                                    top: `${leaveStartMinutes * PIXELS_PER_MINUTE}px`,
+                                    height: `${Math.max(leaveDuration * PIXELS_PER_MINUTE, 28)}px`,
+                                    zIndex: 1,
+                                  }}
+                                >
+                                  <div className="flex items-center gap-1 px-2 py-1 text-xs text-red-300 bg-red-900/40 h-full">
+                                    <UserX className="w-3 h-3 flex-shrink-0" />
+                                    <span className="truncate">
+                                      {actor?.name || '请假'}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                            <SortableContext
+                              items={roomScenes.map((ss) => ss.id)}
+                              strategy={rectSortingStrategy}
+                            >
+                              {roomScenes.map((scheduledScene) => (
+                                <DraggableSceneBlock
+                                  key={scheduledScene.id}
+                                  scheduledScene={scheduledScene}
+                                  scene={scenes.find(
+                                    (s) => s.id === scheduledScene.sceneId
+                                  )}
+                                  room={rooms.find(
+                                    (r) => r.id === scheduledScene.roomId
+                                  )}
+                                  hasConflict={conflictingSceneIds.has(
+                                    scheduledScene.id
+                                  )}
+                                  actorsInScene={getActorsForScheduledScene(
+                                    scheduledScene
+                                  )}
+                                  onDelete={() =>
+                                    onDeleteScene(scheduledScene.id)
+                                  }
+                                />
+                              ))}
+                            </SortableContext>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -420,8 +553,10 @@ export default function ScheduleTimeline({
         <DragOverlay>
           {activeId && activeScheduledScene && activeScene ? (
             <div
-              className={`rounded-md p-2 opacity-80 shadow-2xl ${
-                conflictingSceneIds.has(activeId)
+              className={`rounded-md p-2 opacity-90 shadow-2xl transition-all ${
+                dragOverLeave
+                  ? 'bg-red-600 border-2 border-red-300 animate-pulse ring-4 ring-red-500/50'
+                  : conflictingSceneIds.has(activeId)
                   ? 'bg-theater-burgundy-500 border border-theater-burgundy-400'
                   : 'bg-gradient-to-br from-theater-burgundy-700 to-theater-burgundy-800 border border-theater-gold-500/50'
               }`}
@@ -430,6 +565,12 @@ export default function ScheduleTimeline({
                 minHeight: `${Math.max(activeScene.durationMinutes * PIXELS_PER_MINUTE, 40)}px`,
               }}
             >
+              {dragOverLeave && (
+                <div className="flex items-center gap-1 mb-1 text-xs text-white bg-red-700 rounded px-1.5 py-0.5 w-fit">
+                  <AlertTriangle className="w-3 h-3" />
+                  与请假时段冲突
+                </div>
+              )}
               <div className="flex items-start gap-2">
                 <GripVertical className="w-4 h-4 text-theater-gold-400/60 mt-0.5" />
                 <div>
