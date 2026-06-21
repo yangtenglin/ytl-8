@@ -15,6 +15,7 @@ import {
   ScheduledScene,
   LeavePeriod,
   RoomUnavailability,
+  ConflictWeightConfig,
 } from '../types';
 import { generateId, formatDateTime, combineDateAndTime } from '../utils/time';
 import { addMinutes } from 'date-fns';
@@ -128,6 +129,7 @@ interface AppState {
     startTime: string
   ) => void;
   recalculateScheduleScores: (scheduleId: string) => void;
+  updateScheduleWeightConfig: (scheduleId: string, weightConfig: Partial<ConflictWeightConfig>) => void;
 
   setSelectedDate: (date: string) => void;
   setZoomLevel: (level: 'day' | 'week') => void;
@@ -710,7 +712,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       state.availability,
       state.leavePeriods,
       state.roles,
-      state.roomUnavailabilities
+      state.roomUnavailabilities,
+      updatedSchedule.weightConfig
     );
 
     set({
@@ -751,7 +754,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       state.availability,
       state.leavePeriods,
       state.roles,
-      state.roomUnavailabilities
+      state.roomUnavailabilities,
+      updatedSchedule.weightConfig
     );
 
     set({
@@ -792,7 +796,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       state.availability,
       state.leavePeriods,
       state.roles,
-      state.roomUnavailabilities
+      state.roomUnavailabilities,
+      updatedSchedule.weightConfig
     );
 
     set({
@@ -837,7 +842,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       state.availability,
       state.leavePeriods,
       state.roles,
-      state.roomUnavailabilities
+      state.roomUnavailabilities,
+      updatedSchedule.weightConfig
     );
 
     set({
@@ -862,7 +868,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       state.availability,
       state.leavePeriods,
       state.roles,
-      state.roomUnavailabilities
+      state.roomUnavailabilities,
+      schedule.weightConfig
     );
 
     set({
@@ -870,6 +877,37 @@ export const useAppStore = create<AppState>((set, get) => ({
         s.id === scheduleId ? recalculated : s
       ),
     });
+  },
+
+  updateScheduleWeightConfig: (scheduleId, weightConfig) => {
+    const state = get();
+    const schedule = state.schedules.find((s) => s.id === scheduleId);
+    if (!schedule) return;
+
+    const updatedSchedule: Schedule = {
+      ...schedule,
+      weightConfig,
+    };
+
+    const recalculated = recalculateScheduleScores(
+      updatedSchedule,
+      state.scenes,
+      state.actors,
+      state.props,
+      state.rooms,
+      state.availability,
+      state.leavePeriods,
+      state.roles,
+      state.roomUnavailabilities,
+      weightConfig
+    );
+
+    set({
+      schedules: state.schedules.map((s) =>
+        s.id === scheduleId ? recalculated : s
+      ),
+    });
+    get().saveToStorage();
   },
 
   setSelectedDate: (date) => set({ selectedDate: date }),

@@ -117,6 +117,7 @@ export interface Schedule {
   conflictScore: number;
   gapScore: number;
   conflicts: Conflict[];
+  weightConfig?: Partial<ConflictWeightConfig>;
 }
 
 export interface ScheduleCandidate {

@@ -51,11 +51,13 @@ export default function SchedulerPage() {
     updateLeavePeriod,
     deleteLeavePeriod,
     recalculateScheduleScores,
+    updateScheduleWeightConfig,
     roles,
   } = useAppStore();
 
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [showWeightPanel, setShowWeightPanel] = useState(false);
   const [editingLeaveId, setEditingLeaveId] = useState<string | null>(null);
   const [leaveForm, setLeaveForm] = useState({
     actorId: '',
@@ -516,6 +518,51 @@ export default function SchedulerPage() {
 
           <div className="lg:col-span-1">
             <ScorePanel schedule={currentSchedule} />
+
+            <div className="card p-5 mt-4">
+              <button
+                onClick={() => setShowWeightPanel(!showWeightPanel)}
+                className="w-full flex items-center justify-between"
+              >
+                <h3 className="section-title mb-0">评分权重</h3>
+                <ChevronRight className={`w-4 h-4 text-theater-ink-400 transition-transform ${showWeightPanel ? 'rotate-90' : ''}`} />
+              </button>
+
+              {showWeightPanel && currentSchedule && (
+                <div className="space-y-3 mt-4">
+                  {([
+                    { key: 'actor' as const, label: '演员冲突' },
+                    { key: 'leave' as const, label: '请假冲突' },
+                    { key: 'prop' as const, label: '道具冲突' },
+                    { key: 'room-unavailable' as const, label: '房间停用' },
+                  ] as const).map(({ key, label }) => (
+                    <div key={key}>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs text-theater-ink-300">{label}</label>
+                        <span className="text-xs font-mono text-theater-gold-400">
+                          {currentSchedule.weightConfig?.[key] ?? CONFLICT_WEIGHTS[key]}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="500"
+                        step="10"
+                        className="w-full h-2 bg-theater-ink-700 rounded-lg appearance-none cursor-pointer accent-theater-gold-500"
+                        value={currentSchedule.weightConfig?.[key] ?? CONFLICT_WEIGHTS[key]}
+                        onChange={(e) => {
+                          if (!currentScheduleId) return;
+                          updateScheduleWeightConfig(currentScheduleId, {
+                            ...currentSchedule.weightConfig,
+                            [key]: parseInt(e.target.value),
+                          });
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       ) : (

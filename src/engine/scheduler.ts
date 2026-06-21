@@ -298,6 +298,7 @@ export function generateScheduleCandidates(
         conflictScore,
         gapScore,
         conflicts,
+        weightConfig: options.weightConfig,
       };
 
       return {
