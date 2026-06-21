@@ -21,6 +21,7 @@ import { Scene, Role, Prop, RehearsalRoom, RoomUnavailability, RoomUnavailabilit
 import { useNavigate } from 'react-router-dom';
 import { formatDisplayDateTime, formatDate, formatTime } from '../utils/time';
 import { parseISO, isSameDay } from 'date-fns';
+import { detectDependencyCycle } from '../engine/conflictDetector';
 
 export default function ProductionsPage() {
   const navigate = useNavigate();
@@ -174,6 +175,22 @@ export default function ProductionsPage() {
   const handleSaveScene = () => {
     if (!editingScene.name?.trim() || !currentProductionId) return;
 
+    const newDependsOnSceneIds = editingScene.dependsOnSceneIds || [];
+
+    const cycleResult = detectDependencyCycle(
+      scenes,
+      editingScene.id,
+      newDependsOnSceneIds
+    );
+
+    if (cycleResult.hasCycle) {
+      const pathStr = cycleResult.cycleSceneNames.join(' → ');
+      alert(
+        `检测到场次依赖存在循环路径，无法保存！\n\n循环路径：\n${pathStr}\n\n请修改依赖关系后重试。`
+      );
+      return;
+    }
+
     const sceneData = {
       productionId: currentProductionId,
       name: editingScene.name,
@@ -181,7 +198,7 @@ export default function ProductionsPage() {
       sequence: editingScene.sequence || 1,
       roleIds: editingScene.roleIds || [],
       propIds: editingScene.propIds || [],
-      dependsOnSceneIds: editingScene.dependsOnSceneIds || [],
+      dependsOnSceneIds: newDependsOnSceneIds,
     };
 
     if (editingScene.id) {

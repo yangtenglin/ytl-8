@@ -396,6 +396,110 @@ function checkRoomUnavailabilityConflicts(
   return conflicts;
 }
 
+export interface DependencyCycleResult {
+  hasCycle: boolean;
+  cyclePath: string[];
+  cycleSceneNames: string[];
+}
+
+export function detectDependencyCycle(
+  scenes: Scene[],
+  targetSceneId: string | undefined,
+  newDependsOnSceneIds: string[]
+): DependencyCycleResult {
+  const sceneMap = new Map<string, Scene>();
+  for (const s of scenes) {
+    sceneMap.set(s.id, s);
+  }
+
+  const getDependencies = (sceneId: string): string[] => {
+    if (sceneId === targetSceneId) {
+      return newDependsOnSceneIds;
+    }
+    const scene = sceneMap.get(sceneId);
+    return scene ? scene.dependsOnSceneIds : [];
+  };
+
+  const WHITE = 0;
+  const GRAY = 1;
+  const BLACK = 2;
+  const color = new Map<string, number>();
+  const parent = new Map<string, string | null>();
+
+  for (const sceneId of sceneMap.keys()) {
+    color.set(sceneId, WHITE);
+    parent.set(sceneId, null);
+  }
+
+  if (targetSceneId && !color.has(targetSceneId)) {
+    color.set(targetSceneId, WHITE);
+    parent.set(targetSceneId, null);
+  }
+
+  let cycleStart: string | null = null;
+  let cycleEnd: string | null = null;
+
+  const dfs = (startId: string): boolean => {
+    const stack: { id: string; depIndex: number }[] = [];
+    color.set(startId, GRAY);
+    stack.push({ id: startId, depIndex: 0 });
+
+    while (stack.length > 0) {
+      const current = stack[stack.length - 1];
+      const deps = getDependencies(current.id);
+
+      if (current.depIndex < deps.length) {
+        const depId = deps[current.depIndex];
+        current.depIndex++;
+
+        const depColor = color.get(depId);
+        if (depColor === WHITE) {
+          color.set(depId, GRAY);
+          parent.set(depId, current.id);
+          stack.push({ id: depId, depIndex: 0 });
+        } else if (depColor === GRAY) {
+          cycleStart = depId;
+          cycleEnd = current.id;
+          return true;
+        }
+      } else {
+        color.set(current.id, BLACK);
+        stack.pop();
+      }
+    }
+    return false;
+  };
+
+  const allIds = new Set<string>([...sceneMap.keys()]);
+  if (targetSceneId) allIds.add(targetSceneId);
+
+  for (const sceneId of allIds) {
+    if (color.get(sceneId) === WHITE) {
+      if (dfs(sceneId)) break;
+    }
+  }
+
+  if (cycleStart && cycleEnd) {
+    const cyclePath: string[] = [];
+    let current: string | null = cycleEnd;
+    while (current !== null && current !== cycleStart) {
+      cyclePath.unshift(current);
+      current = parent.get(current) ?? null;
+    }
+    cyclePath.unshift(cycleStart);
+    cyclePath.push(cycleStart);
+
+    const cycleSceneNames = cyclePath.map((id) => {
+      const s = sceneMap.get(id);
+      return s ? s.name : (id === targetSceneId ? '(编辑中)' : id);
+    });
+
+    return { hasCycle: true, cyclePath, cycleSceneNames };
+  }
+
+  return { hasCycle: false, cyclePath: [], cycleSceneNames: [] };
+}
+
 export function detectAllConflicts(
   scheduledScenes: ScheduledScene[],
   scenes: Scene[],
