@@ -29,13 +29,17 @@ export default function DataPage() {
     propBorrowRecords,
     actors,
     availability,
+    leavePeriods,
     rooms,
     schedules,
+    currentProductionId,
     exportData,
     importData,
     resetToSampleData,
     clearAllData,
   } = useAppStore();
+
+  const [exportCurrentOnly, setExportCurrentOnly] = useState(false);
 
   const [importStatus, setImportStatus] = useState<{
     type: 'success' | 'error' | null;
@@ -54,18 +58,131 @@ export default function DataPage() {
     { label: '排期方案', value: schedules.length, icon: Database, color: 'text-pink-400' },
   ];
 
+  const currentProduction = productions.find((p) => p.id === currentProductionId);
+
+  const validateSingleProductionExport = (data: typeof exportData extends () => infer T ? T : never, targetProductionId: string) => {
+    const errors: string[] = [];
+
+    if (data.productions.some((p: { id: string }) => p.id !== targetProductionId)) {
+      errors.push(`productions 中包含其他剧目（共 ${data.productions.length} 个，预期 1 个）`);
+    }
+    if (data.scenes.some((s: { productionId: string }) => s.productionId !== targetProductionId)) {
+      errors.push('scenes 中包含其他剧目');
+    }
+    if (data.roles.some((r: { productionId: string }) => r.productionId !== targetProductionId)) {
+      errors.push('roles 中包含其他剧目');
+    }
+    if (data.props.some((p: { productionId: string }) => p.productionId !== targetProductionId)) {
+      errors.push('props 中包含其他剧目');
+    }
+    if (data.propBorrowRecords.some((r: { productionId: string }) => r.productionId !== targetProductionId)) {
+      errors.push('propBorrowRecords 中包含其他剧目');
+    }
+    if (data.schedules.some((s: { productionId: string }) => s.productionId !== targetProductionId)) {
+      errors.push('schedules 中包含其他剧目');
+    }
+
+    const hasCrossProductionActors = data.actors.some((a: { roleAssignments: { productionId: string }[] }) =>
+      a.roleAssignments.some((ra) => ra.productionId !== targetProductionId)
+    );
+    if (hasCrossProductionActors) {
+      errors.push('actors 的 roleAssignments 中包含其他剧目');
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      summary: {
+        productions: data.productions.length,
+        scenes: data.scenes.length,
+        roles: data.roles.length,
+        props: data.props.length,
+        propBorrowRecords: data.propBorrowRecords.length,
+        actors: data.actors.length,
+        schedules: data.schedules.length,
+      },
+    };
+  };
+
   const handleExport = () => {
-    const data = exportData();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const fullData = exportData();
+
+    if (!exportCurrentOnly || !currentProductionId) {
+      const blob = new Blob([JSON.stringify(fullData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const date = new Date().toISOString().split('T')[0];
+      a.download = `排练协调数据_${date}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    const relatedActorIds = new Set(
+      fullData.actors
+        .filter((a) => a.roleAssignments.some((ra) => ra.productionId === currentProductionId))
+        .map((a) => a.id)
+    );
+
+    const relatedRoomIds = new Set<string>();
+    const currentSchedules = fullData.schedules.filter((s) => s.productionId === currentProductionId);
+    currentSchedules.forEach((sch) => {
+      sch.scheduledScenes.forEach((ss) => relatedRoomIds.add(ss.roomId));
+    });
+
+    const filteredData = {
+      ...fullData,
+      productions: fullData.productions.filter((p) => p.id === currentProductionId),
+      scenes: fullData.scenes.filter((s) => s.productionId === currentProductionId),
+      roles: fullData.roles.filter((r) => r.productionId === currentProductionId),
+      props: fullData.props.filter((p) => p.productionId === currentProductionId),
+      propBorrowRecords: fullData.propBorrowRecords.filter((r) => r.productionId === currentProductionId),
+      actors: fullData.actors
+        .filter((a) => relatedActorIds.has(a.id))
+        .map((a) => ({
+          ...a,
+          roleAssignments: a.roleAssignments.filter((ra) => ra.productionId === currentProductionId),
+        })),
+      availability: fullData.availability.filter((av) => relatedActorIds.has(av.actorId)),
+      leavePeriods: fullData.leavePeriods.filter((lp) => relatedActorIds.has(lp.actorId)),
+      rooms: fullData.rooms.filter((r) => relatedRoomIds.has(r.id) || relatedRoomIds.size === 0),
+      roomUnavailabilities: fullData.roomUnavailabilities.filter(
+        (ru) => relatedRoomIds.has(ru.roomId) || relatedRoomIds.size === 0
+      ),
+      schedules: currentSchedules,
+    };
+
+    const validation = validateSingleProductionExport(filteredData, currentProductionId);
+
+    if (!validation.valid) {
+      const detail = validation.errors.map((e) => `  · ${e}`).join('\n');
+      if (!confirm(`导出数据验证失败：\n${detail}\n\n仍然继续导出吗？`)) {
+        return;
+      }
+    }
+
+    const blob = new Blob([JSON.stringify(filteredData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     const date = new Date().toISOString().split('T')[0];
-    a.download = `排练协调数据_${date}.json`;
+    const safeName = currentProduction?.title?.replace(/[\\/:*?"<>|]/g, '_') || '未知剧目';
+    a.download = `${safeName}_数据_${date}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+
+    if (validation.valid) {
+      setImportStatus({
+        type: 'success',
+        message: `导出完成并通过验证：剧目「${currentProduction?.title}」，包含 ${validation.summary.scenes} 场、${validation.summary.actors} 名演员、${validation.summary.roles} 个角色、${validation.summary.props} 件道具、${validation.summary.schedules} 个方案`,
+      });
+      setTimeout(() => setImportStatus({ type: null, message: '' }), 6000);
+    }
   };
 
   const handleImportClick = () => {
@@ -207,6 +324,32 @@ export default function DataPage() {
               <p className="text-sm text-theater-ink-300 mb-4">
                 将所有数据导出为 JSON 文件备份，可用于数据迁移或分享。
               </p>
+              <div className="flex items-center gap-3 mb-4">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={exportCurrentOnly}
+                  onClick={() => setExportCurrentOnly(!exportCurrentOnly)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-theater-gold-500/50 ${
+                    exportCurrentOnly ? 'bg-theater-gold-600' : 'bg-theater-ink-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      exportCurrentOnly ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className="text-sm text-theater-parchment-200">只导出当前剧目</span>
+                {exportCurrentOnly && currentProduction && (
+                  <span className="text-xs px-2 py-0.5 rounded bg-theater-gold-500/20 text-theater-gold-300 border border-theater-gold-500/30">
+                    {currentProduction.title}
+                  </span>
+                )}
+                {exportCurrentOnly && !currentProduction && (
+                  <span className="text-xs text-theater-ink-400">（未选择剧目）</span>
+                )}
+              </div>
               <button
                 onClick={handleExport}
                 className="btn-primary flex items-center gap-2"
