@@ -113,7 +113,7 @@ function checkPropConflicts(
         const prop = props.find((p) => p.id === propId);
         if (!prop) continue;
 
-        if (prop.quantity < 2) {
+        if (prop.totalQuantity < 2) {
           conflicts.push({
             id: generateId(),
             type: 'prop',

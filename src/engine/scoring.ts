@@ -1,5 +1,5 @@
 import { ScheduledScene, OPTIMAL_GAP_MINUTES } from '../types';
-import { parseISO, differenceInMinutes, isSameDay, sortBy } from 'date-fns';
+import { parseISO, differenceInMinutes, isSameDay } from 'date-fns';
 
 interface GapInfo {
   gapMinutes: number;
@@ -29,7 +29,9 @@ export function calculateGapScore(
   let totalScore = 0;
 
   for (const [, roomDayScenes] of byRoomAndDay) {
-    const sorted = sortBy(roomDayScenes, (ss) => parseISO(ss.startTime));
+    const sorted = [...roomDayScenes].sort((a, b) =>
+      parseISO(a.startTime).getTime() - parseISO(b.startTime).getTime()
+    );
 
     for (let i = 0; i < sorted.length - 1; i++) {
       const current = sorted[i];

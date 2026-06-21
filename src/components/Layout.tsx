@@ -6,12 +6,14 @@ import {
   Database,
   Menu,
   X,
+  ClipboardList,
 } from 'lucide-react';
 import { useState } from 'react';
 
 const navItems = [
   { to: '/productions', label: '剧目管理', icon: Theater },
   { to: '/actors', label: '演员档案', icon: Users },
+  { to: '/props-ledger', label: '道具台账', icon: ClipboardList },
   { to: '/scheduler', label: '排期工作台', icon: Calendar },
   { to: '/data', label: '数据管理', icon: Database },
 ];

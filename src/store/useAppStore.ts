@@ -4,6 +4,7 @@ import {
   Scene,
   Role,
   Prop,
+  PropBorrowRecord,
   Actor,
   AvailabilitySlot,
   RehearsalRoom,
@@ -35,6 +36,7 @@ interface AppState {
   scenes: Scene[];
   roles: Role[];
   props: Prop[];
+  propBorrowRecords: PropBorrowRecord[];
   actors: Actor[];
   availability: AvailabilitySlot[];
   leavePeriods: LeavePeriod[];
@@ -64,9 +66,17 @@ interface AppState {
   updateRole: (id: string, updates: Partial<Role>) => void;
   deleteRole: (id: string) => void;
 
-  addProp: (prop: Omit<Prop, 'id'>) => void;
+  addProp: (prop: Omit<Prop, 'id' | 'createdAt'>) => void;
   updateProp: (id: string, updates: Partial<Prop>) => void;
   deleteProp: (id: string) => void;
+
+  addPropBorrowRecord: (record: Omit<PropBorrowRecord, 'id'>) => { success: boolean; message: string };
+  updatePropBorrowRecord: (id: string, updates: Partial<PropBorrowRecord>) => void;
+  deletePropBorrowRecord: (id: string) => void;
+  returnPropBorrowRecord: (id: string, quantity?: number) => { success: boolean; message: string };
+  getPropAvailableQuantity: (propId: string) => number;
+  getPropBorrowedQuantity: (propId: string) => number;
+  checkPropBorrowConflict: (propId: string, quantity: number, scheduledSceneId?: string) => { conflict: boolean; message: string };
 
   addActor: (actor: Omit<Actor, 'id'>) => void;
   updateActor: (id: string, updates: Partial<Actor>) => void;
@@ -132,6 +142,7 @@ function loadInitialState() {
         scenes: data.scenes || [],
         roles: data.roles || [],
         props: data.props || [],
+        propBorrowRecords: data.propBorrowRecords || [],
         actors: data.actors || [],
         availability: data.availability || [],
         leavePeriods: data.leavePeriods || [],
@@ -148,6 +159,7 @@ function loadInitialState() {
     scenes: sampleScenes,
     roles: sampleRoles,
     props: sampleProps,
+    propBorrowRecords: [],
     actors: sampleActors,
     availability: sampleAvailability,
     leavePeriods: [],
@@ -160,6 +172,7 @@ const initialData = loadInitialState();
 
 export const useAppStore = create<AppState>((set, get) => ({
   ...initialData,
+  propBorrowRecords: initialData.propBorrowRecords || [],
   currentProductionId: initialData.productions[0]?.id || null,
   currentScheduleId: null,
   candidates: [],
@@ -184,6 +197,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       scenes: state.scenes,
       roles: state.roles,
       props: state.props,
+      propBorrowRecords: state.propBorrowRecords,
       actors: state.actors,
       availability: state.availability,
       leavePeriods: state.leavePeriods,
@@ -224,6 +238,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         scenes: state.scenes.filter((s) => s.productionId !== id),
         roles: state.roles.filter((r) => r.productionId !== id),
         props: state.props.filter((p) => p.productionId !== id),
+        propBorrowRecords: state.propBorrowRecords.filter((r) => r.productionId !== id),
         schedules: state.schedules.filter((s) => s.productionId !== id),
         currentProductionId:
           state.currentProductionId === id
@@ -299,7 +314,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   addProp: (prop) => {
     set((state) => ({
-      props: [...state.props, { ...prop, id: generateId() }],
+      props: [...state.props, { ...prop, id: generateId(), createdAt: new Date().toISOString() }],
     }));
     get().saveToStorage();
   },
@@ -314,12 +329,141 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteProp: (id) => {
     set((state) => ({
       props: state.props.filter((p) => p.id !== id),
+      propBorrowRecords: state.propBorrowRecords.filter((r) => r.propId !== id),
       scenes: state.scenes.map((s) => ({
         ...s,
         propIds: s.propIds.filter((pid) => pid !== id),
       })),
     }));
     get().saveToStorage();
+  },
+
+  getPropBorrowedQuantity: (propId) => {
+    const state = get();
+    return state.propBorrowRecords
+      .filter((r) => r.propId === propId && r.status === 'borrowed')
+      .reduce((sum, r) => sum + r.quantity, 0);
+  },
+
+  getPropAvailableQuantity: (propId) => {
+    const state = get();
+    const prop = state.props.find((p) => p.id === propId);
+    if (!prop) return 0;
+    const borrowed = get().getPropBorrowedQuantity(propId);
+    return Math.max(0, prop.totalQuantity - borrowed);
+  },
+
+  checkPropBorrowConflict: (propId, quantity, scheduledSceneId) => {
+    const state = get();
+    const prop = state.props.find((p) => p.id === propId);
+    if (!prop) {
+      return { conflict: true, message: '道具不存在' };
+    }
+
+    const available = get().getPropAvailableQuantity(propId);
+    if (quantity > available) {
+      return {
+        conflict: true,
+        message: `库存不足，当前可用 ${available} 件，需要 ${quantity} 件`,
+      };
+    }
+
+    if (scheduledSceneId) {
+      const sameSceneRecords = state.propBorrowRecords.filter(
+        (r) => r.scheduledSceneId === scheduledSceneId && r.propId === propId && r.status === 'borrowed'
+      );
+      const sceneTotal = sameSceneRecords.reduce((sum, r) => sum + r.quantity, 0) + quantity;
+      if (sceneTotal > prop.totalQuantity) {
+        return {
+          conflict: true,
+          message: `同场次超量冲突：该场次已借出 ${sameSceneRecords.reduce((sum, r) => sum + r.quantity, 0)} 件，再加 ${quantity} 件超过总库存 ${prop.totalQuantity} 件`,
+        };
+      }
+    }
+
+    return { conflict: false, message: '' };
+  },
+
+  addPropBorrowRecord: (record) => {
+    const state = get();
+    const check = get().checkPropBorrowConflict(record.propId, record.quantity, record.scheduledSceneId);
+    if (check.conflict) {
+      return { success: false, message: check.message };
+    }
+
+    const newRecord: PropBorrowRecord = {
+      ...record,
+      id: generateId(),
+    };
+    set((state) => ({
+      propBorrowRecords: [...state.propBorrowRecords, newRecord],
+    }));
+    get().saveToStorage();
+    return { success: true, message: '借出登记成功' };
+  },
+
+  updatePropBorrowRecord: (id, updates) => {
+    set((state) => ({
+      propBorrowRecords: state.propBorrowRecords.map((r) =>
+        r.id === id ? { ...r, ...updates } : r
+      ),
+    }));
+    get().saveToStorage();
+  },
+
+  deletePropBorrowRecord: (id) => {
+    set((state) => ({
+      propBorrowRecords: state.propBorrowRecords.filter((r) => r.id !== id),
+    }));
+    get().saveToStorage();
+  },
+
+  returnPropBorrowRecord: (id, returnQuantity) => {
+    const state = get();
+    const record = state.propBorrowRecords.find((r) => r.id === id);
+    if (!record) {
+      return { success: false, message: '记录不存在' };
+    }
+    if (record.status !== 'borrowed') {
+      return { success: false, message: '该记录状态不是借出中' };
+    }
+
+    const qty = returnQuantity ?? record.quantity;
+    if (qty > record.quantity) {
+      return { success: false, message: `归还数量不能超过借出数量 ${record.quantity}` };
+    }
+
+    if (qty === record.quantity) {
+      set((state) => ({
+        propBorrowRecords: state.propBorrowRecords.map((r) =>
+          r.id === id
+            ? { ...r, status: 'returned', actualReturnTime: new Date().toISOString() }
+            : r
+        ),
+      }));
+    } else {
+      const remaining: PropBorrowRecord = {
+        ...record,
+        id: generateId(),
+        quantity: record.quantity - qty,
+      };
+      const returned: PropBorrowRecord = {
+        ...record,
+        id: generateId(),
+        quantity: qty,
+        status: 'returned',
+        actualReturnTime: new Date().toISOString(),
+      };
+      set((state) => ({
+        propBorrowRecords: [
+          ...state.propBorrowRecords.filter((r) => r.id !== id),
+          remaining,
+          returned,
+        ],
+      }));
+    }
+    get().saveToStorage();
+    return { success: true, message: '归还登记成功' };
   },
 
   addActor: (actor) => {
@@ -679,6 +823,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       scenes: data.scenes || [],
       roles: data.roles || [],
       props: data.props || [],
+      propBorrowRecords: data.propBorrowRecords || [],
       actors: data.actors || [],
       availability: data.availability || [],
       leavePeriods: data.leavePeriods || [],
@@ -700,6 +845,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       scenes: state.scenes,
       roles: state.roles,
       props: state.props,
+      propBorrowRecords: state.propBorrowRecords,
       actors: state.actors,
       availability: state.availability,
       leavePeriods: state.leavePeriods,
@@ -714,6 +860,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       scenes: sampleScenes,
       roles: sampleRoles,
       props: sampleProps,
+      propBorrowRecords: [],
       actors: sampleActors,
       availability: sampleAvailability,
       leavePeriods: [],
@@ -732,6 +879,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       scenes: [],
       roles: [],
       props: [],
+      propBorrowRecords: [],
       actors: [],
       availability: [],
       leavePeriods: [],

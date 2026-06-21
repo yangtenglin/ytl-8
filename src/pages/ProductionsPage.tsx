@@ -23,6 +23,7 @@ export default function ProductionsPage() {
     scenes,
     roles,
     props,
+    propBorrowRecords,
     currentProductionId,
     setCurrentProduction,
     addProduction,
@@ -37,6 +38,8 @@ export default function ProductionsPage() {
     addProp,
     updateProp,
     deleteProp,
+    getPropAvailableQuantity,
+    getPropBorrowedQuantity,
   } = useAppStore();
 
   const [showProductionModal, setShowProductionModal] = useState(false);
@@ -70,7 +73,10 @@ export default function ProductionsPage() {
   const [showPropModal, setShowPropModal] = useState(false);
   const [editingProp, setEditingProp] = useState<Partial<Prop> & { id?: string }>({
     name: '',
-    quantity: 1,
+    totalQuantity: 1,
+    barcode: '',
+    location: '',
+    description: '',
   });
 
   const currentProduction = useMemo(
@@ -190,7 +196,10 @@ export default function ProductionsPage() {
     const propData = {
       productionId: currentProductionId,
       name: editingProp.name,
-      quantity: editingProp.quantity || 1,
+      totalQuantity: editingProp.totalQuantity || 1,
+      barcode: editingProp.barcode || '',
+      location: editingProp.location || '',
+      description: editingProp.description || '',
     };
 
     if (editingProp.id) {
@@ -199,7 +208,7 @@ export default function ProductionsPage() {
       addProp(propData);
     }
     setShowPropModal(false);
-    setEditingProp({ name: '', quantity: 1 });
+    setEditingProp({ name: '', totalQuantity: 1, barcode: '', location: '', description: '' });
   };
 
   const handleEditProp = (prop: Prop) => {
@@ -555,7 +564,7 @@ export default function ProductionsPage() {
                     </p>
                     <button
                       onClick={() => {
-                        setEditingProp({ name: '', quantity: 1 });
+                        setEditingProp({ name: '', totalQuantity: 1, barcode: '', location: '', description: '' });
                         setShowPropModal(true);
                       }}
                       className="btn-secondary flex items-center gap-2 text-sm py-1.5 px-3"
@@ -566,46 +575,56 @@ export default function ProductionsPage() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {productionProps.map((prop) => (
-                      <div
-                        key={prop.id}
-                        className="card p-4 flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-theater-gold-500/10 flex items-center justify-center">
-                            <Package className="w-5 h-5 text-theater-gold-400" />
+                    {productionProps.map((prop) => {
+                      const borrowed = getPropBorrowedQuantity(prop.id);
+                      const available = getPropAvailableQuantity(prop.id);
+                      return (
+                        <div
+                          key={prop.id}
+                          className="card p-4 flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-theater-gold-500/10 flex items-center justify-center">
+                              <Package className="w-5 h-5 text-theater-gold-400" />
+                            </div>
+                            <div>
+                              <h4 className="font-serif font-medium text-theater-parchment-100">
+                                {prop.name}
+                              </h4>
+                              <div className="text-xs text-theater-ink-400 space-y-0.5">
+                                <p>
+                                  总库存: {prop.totalQuantity} |
+                                  <span className="text-theater-burgundy-400"> 借出: {borrowed}</span> |
+                                  <span className="text-emerald-400"> 可用: {available}</span>
+                                </p>
+                                {prop.barcode && <p>条码: {prop.barcode}</p>}
+                                {prop.location && <p>位置: {prop.location}</p>}
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <h4 className="font-serif font-medium text-theater-parchment-100">
-                              {prop.name}
-                            </h4>
-                            <p className="text-xs text-theater-ink-400">
-                              数量: {prop.quantity}
-                            </p>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleEditProp(prop)}
+                              className="p-1.5 rounded hover:bg-theater-ink-600 text-theater-ink-300"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (
+                                  confirm(`确定要删除道具「${prop.name}」吗？`)
+                                ) {
+                                  deleteProp(prop.id);
+                                }
+                              }}
+                              className="p-1.5 rounded hover:bg-theater-burgundy-500/30 text-theater-ink-300 hover:text-theater-burgundy-400"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => handleEditProp(prop)}
-                            className="p-1.5 rounded hover:bg-theater-ink-600 text-theater-ink-300"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (
-                                confirm(`确定要删除道具「${prop.name}」吗？`)
-                              ) {
-                                deleteProp(prop.id);
-                              }
-                            }}
-                            className="p-1.5 rounded hover:bg-theater-burgundy-500/30 text-theater-ink-300 hover:text-theater-burgundy-400"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
 
                     {productionProps.length === 0 && (
                       <div className="col-span-full text-center py-12 text-theater-ink-400">
@@ -898,17 +917,57 @@ export default function ProductionsPage() {
                 autoFocus
               />
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="input-label">总库存数量</label>
+                <input
+                  type="number"
+                  min="1"
+                  className="input-field"
+                  value={editingProp.totalQuantity || 1}
+                  onChange={(e) =>
+                    setEditingProp({
+                      ...editingProp,
+                      totalQuantity: parseInt(e.target.value) || 1,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="input-label">条码编号</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="例如：PROP-001"
+                  value={editingProp.barcode || ''}
+                  onChange={(e) =>
+                    setEditingProp({ ...editingProp, barcode: e.target.value })
+                  }
+                />
+              </div>
+            </div>
             <div>
-              <label className="input-label">数量</label>
+              <label className="input-label">存放位置</label>
               <input
-                type="number"
-                min="1"
+                type="text"
                 className="input-field"
-                value={editingProp.quantity || 1}
+                placeholder="例如：道具仓A区"
+                value={editingProp.location || ''}
+                onChange={(e) =>
+                  setEditingProp({ ...editingProp, location: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <label className="input-label">道具描述</label>
+              <textarea
+                className="input-field min-h-[80px] resize-none"
+                placeholder="道具规格、特征等"
+                value={editingProp.description || ''}
                 onChange={(e) =>
                   setEditingProp({
                     ...editingProp,
-                    quantity: parseInt(e.target.value) || 1,
+                    description: e.target.value,
                   })
                 }
               />

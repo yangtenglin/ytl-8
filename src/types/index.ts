@@ -16,7 +16,29 @@ export interface Prop {
   id: string;
   productionId: string;
   name: string;
+  totalQuantity: number;
+  barcode?: string;
+  location?: string;
+  description?: string;
+  createdAt: string;
+}
+
+export type PropBorrowStatus = 'borrowed' | 'returned' | 'lost' | 'damaged';
+
+export interface PropBorrowRecord {
+  id: string;
+  propId: string;
+  productionId: string;
+  scheduledSceneId?: string;
+  sceneId?: string;
+  borrower: string;
+  borrowerContact?: string;
   quantity: number;
+  borrowTime: string;
+  expectedReturnTime?: string;
+  actualReturnTime?: string;
+  status: PropBorrowStatus;
+  notes?: string;
 }
 
 export interface Scene {
@@ -118,6 +140,7 @@ export interface FullData {
   scenes: Scene[];
   roles: Role[];
   props: Prop[];
+  propBorrowRecords: PropBorrowRecord[];
   actors: Actor[];
   availability: AvailabilitySlot[];
   leavePeriods: LeavePeriod[];

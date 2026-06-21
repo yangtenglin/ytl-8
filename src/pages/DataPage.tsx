@@ -14,9 +14,10 @@ import {
   Users,
   Calendar,
   Package,
-  Mask,
+  UserRound,
   Clock,
   Home,
+  ClipboardList,
 } from 'lucide-react';
 
 export default function DataPage() {
@@ -25,6 +26,7 @@ export default function DataPage() {
     scenes,
     roles,
     props,
+    propBorrowRecords,
     actors,
     availability,
     rooms,
@@ -44,12 +46,12 @@ export default function DataPage() {
   const stats = [
     { label: '剧目', value: productions.length, icon: Theater, color: 'text-theater-burgundy-400' },
     { label: '场次', value: scenes.length, icon: Clock, color: 'text-theater-gold-400' },
-    { label: '角色', value: roles.length, icon: Mask, color: 'text-emerald-400' },
+    { label: '角色', value: roles.length, icon: UserRound, color: 'text-emerald-400' },
     { label: '道具', value: props.length, icon: Package, color: 'text-blue-400' },
+    { label: '借还记录', value: propBorrowRecords.length, icon: ClipboardList, color: 'text-cyan-400' },
     { label: '演员', value: actors.length, icon: Users, color: 'text-purple-400' },
     { label: '档期', value: availability.length, icon: Calendar, color: 'text-orange-400' },
-    { label: '排练室', value: rooms.length, icon: Home, color: 'text-pink-400' },
-    { label: '排期方案', value: schedules.length, icon: Database, color: 'text-cyan-400' },
+    { label: '排期方案', value: schedules.length, icon: Database, color: 'text-pink-400' },
   ];
 
   const handleExport = () => {

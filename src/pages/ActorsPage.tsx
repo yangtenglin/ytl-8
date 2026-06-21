@@ -14,7 +14,7 @@ import {
   Ban,
   CheckCircle2,
   Users,
-  Mask,
+  UserRound,
 } from 'lucide-react';
 import { Actor, AvailabilitySlot, AvailabilityType, Role } from '../types';
 
@@ -401,7 +401,7 @@ export default function ActorsPage() {
                 {getActorRoles(actor).length > 0 && (
                   <div className="mt-3 pt-3 border-t border-theater-ink-600/50">
                     <p className="text-xs text-theater-ink-400 mb-2 flex items-center gap-1">
-                      <Mask className="w-3 h-3" />
+                      <UserRound className="w-3 h-3" />
                       饰演角色
                     </p>
                     <div className="flex flex-wrap gap-1.5">
@@ -632,7 +632,7 @@ export default function ActorsPage() {
               <div>
                 <label className="block text-sm font-medium text-theater-parchment-300 mb-3">
                   <span className="flex items-center gap-2">
-                    <Mask className="w-4 h-4" />
+                    <UserRound className="w-4 h-4" />
                     角色分配
                   </span>
                 </label>

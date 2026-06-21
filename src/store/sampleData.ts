@@ -49,10 +49,10 @@ const prop3 = generateId();
 const prop4 = generateId();
 
 export const sampleProps: Prop[] = [
-  { id: prop1, productionId: prodId1, name: '真皮沙发', quantity: 1 },
-  { id: prop2, productionId: prodId1, name: '紫檀木桌', quantity: 1 },
-  { id: prop3, productionId: prodId1, name: '台灯', quantity: 2 },
-  { id: prop4, productionId: prodId1, name: '折扇', quantity: 3 },
+  { id: prop1, productionId: prodId1, name: '真皮沙发', totalQuantity: 1, barcode: 'PROP-001', location: '道具仓A区', description: '欧式古典真皮三人沙发', createdAt: new Date().toISOString() },
+  { id: prop2, productionId: prodId1, name: '紫檀木桌', totalQuantity: 1, barcode: 'PROP-002', location: '道具仓A区', description: '民国风紫檀木八仙桌', createdAt: new Date().toISOString() },
+  { id: prop3, productionId: prodId1, name: '台灯', totalQuantity: 4, barcode: 'PROP-003', location: '道具仓B区', description: '复古绿玻璃罩台灯', createdAt: new Date().toISOString() },
+  { id: prop4, productionId: prodId1, name: '折扇', totalQuantity: 6, barcode: 'PROP-004', location: '道具仓C区', description: '素白纸折扇', createdAt: new Date().toISOString() },
 ];
 
 const scene1 = generateId();
@@ -167,15 +167,15 @@ function createAvailabilitySlot(
 }
 
 export const sampleAvailability: AvailabilitySlot[] = [
-  ...[actor1, actor2, actor3, actor4, actor5, actor6].flatMap((actor) => [
-    createAvailabilitySlot(actor.id, 1, '18:00', '22:00', 'preferred'),
-    createAvailabilitySlot(actor.id, 2, '18:00', '22:00', 'preferred'),
-    createAvailabilitySlot(actor.id, 3, '18:00', '22:00', 'available'),
-    createAvailabilitySlot(actor.id, 4, '18:00', '22:00', 'preferred'),
-    createAvailabilitySlot(actor.id, 5, '18:00', '22:00', 'available'),
-    createAvailabilitySlot(actor.id, 6, '10:00', '12:00', 'available'),
-    createAvailabilitySlot(actor.id, 6, '14:00', '18:00', 'preferred'),
-    createAvailabilitySlot(actor.id, 0, '14:00', '18:00', 'available'),
+  ...[actor1, actor2, actor3, actor4, actor5, actor6].flatMap((actorId) => [
+    createAvailabilitySlot(actorId, 1, '18:00', '22:00', 'preferred'),
+    createAvailabilitySlot(actorId, 2, '18:00', '22:00', 'preferred'),
+    createAvailabilitySlot(actorId, 3, '18:00', '22:00', 'available'),
+    createAvailabilitySlot(actorId, 4, '18:00', '22:00', 'preferred'),
+    createAvailabilitySlot(actorId, 5, '18:00', '22:00', 'available'),
+    createAvailabilitySlot(actorId, 6, '10:00', '12:00', 'available'),
+    createAvailabilitySlot(actorId, 6, '14:00', '18:00', 'preferred'),
+    createAvailabilitySlot(actorId, 0, '14:00', '18:00', 'available'),
   ]),
   createAvailabilitySlot(actor3, 2, '18:00', '22:00', 'unavailable'),
   createAvailabilitySlot(actor4, 4, '18:00', '20:00', 'unavailable'),
