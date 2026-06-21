@@ -18,7 +18,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { format, addDays, parseISO, isSameDay } from 'date-fns';
-import { GenerateOptions, LeavePeriod } from '../types';
+import { GenerateOptions, LeavePeriod, CONFLICT_WEIGHTS } from '../types';
 import { formatDisplayDate, formatDisplayDateTime, formatDate, formatTime } from '../utils/time';
 
 export default function SchedulerPage() {
@@ -72,6 +72,7 @@ export default function SchedulerPage() {
     dailyStartTime: '18:00',
     dailyEndTime: '22:00',
     breakDurationMinutes: 15,
+    weightConfig: { ...CONFLICT_WEIGHTS },
   });
 
   const currentProduction = useMemo(
@@ -623,6 +624,117 @@ export default function SchedulerPage() {
                   <option value={3}>3 个方案</option>
                   <option value={5}>5 个方案</option>
                 </select>
+              </div>
+
+              <div className="pt-3 border-t border-theater-ink-600">
+                <h4 className="text-sm font-medium text-theater-parchment-200 mb-3">
+                  评分权重配置
+                </h4>
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-theater-ink-300">演员冲突</label>
+                      <span className="text-xs font-mono text-theater-gold-400">
+                        {generateOptions.weightConfig?.actor ?? CONFLICT_WEIGHTS.actor}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="500"
+                      step="10"
+                      className="w-full h-2 bg-theater-ink-700 rounded-lg appearance-none cursor-pointer accent-theater-gold-500"
+                      value={generateOptions.weightConfig?.actor ?? CONFLICT_WEIGHTS.actor}
+                      onChange={(e) =>
+                        setGenerateOptions({
+                          ...generateOptions,
+                          weightConfig: {
+                            ...generateOptions.weightConfig,
+                            actor: parseInt(e.target.value),
+                          },
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-theater-ink-300">请假冲突</label>
+                      <span className="text-xs font-mono text-theater-gold-400">
+                        {generateOptions.weightConfig?.leave ?? CONFLICT_WEIGHTS.leave}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="500"
+                      step="10"
+                      className="w-full h-2 bg-theater-ink-700 rounded-lg appearance-none cursor-pointer accent-theater-gold-500"
+                      value={generateOptions.weightConfig?.leave ?? CONFLICT_WEIGHTS.leave}
+                      onChange={(e) =>
+                        setGenerateOptions({
+                          ...generateOptions,
+                          weightConfig: {
+                            ...generateOptions.weightConfig,
+                            leave: parseInt(e.target.value),
+                          },
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-theater-ink-300">道具冲突</label>
+                      <span className="text-xs font-mono text-theater-gold-400">
+                        {generateOptions.weightConfig?.prop ?? CONFLICT_WEIGHTS.prop}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="500"
+                      step="10"
+                      className="w-full h-2 bg-theater-ink-700 rounded-lg appearance-none cursor-pointer accent-theater-gold-500"
+                      value={generateOptions.weightConfig?.prop ?? CONFLICT_WEIGHTS.prop}
+                      onChange={(e) =>
+                        setGenerateOptions({
+                          ...generateOptions,
+                          weightConfig: {
+                            ...generateOptions.weightConfig,
+                            prop: parseInt(e.target.value),
+                          },
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-theater-ink-300">房间停用</label>
+                      <span className="text-xs font-mono text-theater-gold-400">
+                        {generateOptions.weightConfig?.['room-unavailable'] ?? CONFLICT_WEIGHTS['room-unavailable']}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="500"
+                      step="10"
+                      className="w-full h-2 bg-theater-ink-700 rounded-lg appearance-none cursor-pointer accent-theater-gold-500"
+                      value={generateOptions.weightConfig?.['room-unavailable'] ?? CONFLICT_WEIGHTS['room-unavailable']}
+                      onChange={(e) =>
+                        setGenerateOptions({
+                          ...generateOptions,
+                          weightConfig: {
+                            ...generateOptions.weightConfig,
+                            'room-unavailable': parseInt(e.target.value),
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 

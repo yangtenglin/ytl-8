@@ -17,6 +17,7 @@ import {
   formatTime,
   formatDisplayDateTime,
   generateId,
+  getTimeMinutesFromMidnight,
 } from '../utils/time';
 import { parseISO, isBefore } from 'date-fns';
 
@@ -243,14 +244,12 @@ function checkAvailabilityConflicts(
       for (const slot of actorSlots) {
         if (slot.type === 'unavailable') continue;
 
-        if (
-          isTimeOverlap(
-            ssStartTime,
-            ssEndTime,
-            slot.startTime,
-            slot.endTime
-          )
-        ) {
+        const ssStartMin = getTimeMinutesFromMidnight(ssStartTime);
+        const ssEndMin = getTimeMinutesFromMidnight(ssEndTime);
+        const slotStartMin = getTimeMinutesFromMidnight(slot.startTime);
+        const slotEndMin = getTimeMinutesFromMidnight(slot.endTime);
+
+        if (ssStartMin >= slotStartMin && ssEndMin <= slotEndMin) {
           fullyCovered = true;
           if (slot.type !== 'preferred') {
             isPreferred = false;
@@ -438,9 +437,13 @@ export function detectAllConflicts(
   ];
 }
 
-export function calculateConflictScore(conflicts: Conflict[]): number {
+export function calculateConflictScore(
+  conflicts: Conflict[],
+  customWeights?: Partial<typeof CONFLICT_WEIGHTS>
+): number {
+  const weights = { ...CONFLICT_WEIGHTS, ...customWeights };
   return conflicts.reduce((score, conflict) => {
-    const weight = CONFLICT_WEIGHTS[conflict.type];
+    const weight = weights[conflict.type];
     const severityMultiplier = conflict.severity === 'error' ? 1 : 0.3;
     const roleWeight =
       conflict.type === 'leave' && conflict.details?.roleWeight

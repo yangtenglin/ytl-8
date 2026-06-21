@@ -12,6 +12,7 @@ import {
   LeavePeriod,
   Role,
   RoomUnavailability,
+  ConflictWeightConfig,
 } from '../types';
 import {
   generateId,
@@ -62,7 +63,7 @@ function sortScenesByPriority(scenes: Scene[]): Scene[] {
   return [...scenes].sort((a, b) => {
     const depthA = getSceneDependencyDepth(a, scenes);
     const depthB = getSceneDependencyDepth(b, scenes);
-    if (depthB !== depthA) return depthB - depthA;
+    if (depthA !== depthB) return depthA - depthB;
 
     const actorCountA = a.roleIds.length;
     const actorCountB = b.roleIds.length;
@@ -256,7 +257,7 @@ export function generateScheduleCandidates(
       shuffledScenes.sort((a, b) => {
         const depthA = getSceneDependencyDepth(a, scenes);
         const depthB = getSceneDependencyDepth(b, scenes);
-        return depthB - depthA;
+        return depthA - depthB;
       });
     }
 
@@ -283,7 +284,7 @@ export function generateScheduleCandidates(
         roles,
         roomUnavailabilities
       );
-      const conflictScore = calculateConflictScore(conflicts);
+      const conflictScore = calculateConflictScore(conflicts, options.weightConfig);
       const { score: gapScore } = calculateGapScore(scheduledScenes);
       const totalScore = calculateTotalScore(conflictScore, gapScore);
 
@@ -321,7 +322,8 @@ export function recalculateScheduleScores(
   availability: AvailabilitySlot[],
   leavePeriods: LeavePeriod[] = [],
   roles: Role[] = [],
-  roomUnavailabilities: RoomUnavailability[] = []
+  roomUnavailabilities: RoomUnavailability[] = [],
+  weightConfig?: Partial<ConflictWeightConfig>
 ): Schedule {
   const conflicts = detectAllConflicts(
     schedule.scheduledScenes,
@@ -335,7 +337,7 @@ export function recalculateScheduleScores(
     roles,
     roomUnavailabilities
   );
-  const conflictScore = calculateConflictScore(conflicts);
+  const conflictScore = calculateConflictScore(conflicts, weightConfig);
   const { score: gapScore } = calculateGapScore(schedule.scheduledScenes);
 
   return {

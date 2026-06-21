@@ -134,6 +134,7 @@ export interface GenerateOptions {
   dailyStartTime: string;
   dailyEndTime: string;
   breakDurationMinutes: number;
+  weightConfig?: Partial<ConflictWeightConfig>;
 }
 
 export interface LeavePeriod {
