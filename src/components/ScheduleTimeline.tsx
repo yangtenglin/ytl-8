@@ -28,6 +28,7 @@ import {
   Conflict,
   Actor,
   LeavePeriod,
+  RoomUnavailability,
 } from '../types';
 import {
   formatDisplayDate,
@@ -38,7 +39,7 @@ import {
   combineDateAndTime,
 } from '../utils/time';
 import { addMinutes as addMinutesUtil } from 'date-fns';
-import { Clock, User, Package, AlertTriangle, GripVertical, X, UserX } from 'lucide-react';
+import { Clock, User, Package, AlertTriangle, GripVertical, X, UserX, Wrench, Ban } from 'lucide-react';
 
 interface ScheduleTimelineProps {
   scheduledScenes: ScheduledScene[];
@@ -57,6 +58,7 @@ interface ScheduleTimelineProps {
   onDeleteScene: (scheduledSceneId: string) => void;
   zoomLevel: 'day' | 'week';
   leavePeriods?: LeavePeriod[];
+  roomUnavailabilities?: RoomUnavailability[];
 }
 
 const TIMELINE_START_HOUR = 9;
@@ -198,9 +200,11 @@ export default function ScheduleTimeline({
   onDeleteScene,
   zoomLevel,
   leavePeriods = [],
+  roomUnavailabilities = [],
 }: ScheduleTimelineProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dragOverLeave, setDragOverLeave] = useState(false);
+  const [dragOverRoomUnavail, setDragOverRoomUnavail] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -243,6 +247,28 @@ export default function ScheduleTimeline({
     );
   };
 
+  const getRoomUnavailabilitiesForDateAndRoom = (
+    date: string,
+    roomId: string
+  ) => {
+    return roomUnavailabilities.filter(
+      (ru) =>
+        ru.roomId === roomId &&
+        isSameDay(parseISO(ru.startTime), parseISO(date))
+    );
+  };
+
+  const getRoomUnavailabilityTypeLabel = (type: string) => {
+    switch (type) {
+      case 'maintenance':
+        return '检修';
+      case 'closed':
+        return '停用';
+      default:
+        return '不可用';
+    }
+  };
+
   const getActorsForScheduledScene = (scheduledScene: ScheduledScene) => {
     const scene = scenes.find((s) => s.id === scheduledScene.sceneId);
     if (!scene) return [];
@@ -258,6 +284,25 @@ export default function ScheduleTimeline({
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
     setDragOverLeave(false);
+    setDragOverRoomUnavail(false);
+  };
+
+  const checkRoomUnavailabilityConflict = (
+    date: string,
+    timeStr: string,
+    scene: Scene | undefined,
+    roomId: string
+  ): boolean => {
+    if (!scene) return false;
+    const startTime = combineDateAndTime(date, timeStr);
+    const endTime = addMinutesUtil(startTime, scene.durationMinutes);
+    const roomUnavails = getRoomUnavailabilitiesForDateAndRoom(date, roomId);
+    for (const ru of roomUnavails) {
+      if (isTimeOverlap(startTime, endTime, ru.startTime, ru.endTime)) {
+        return true;
+      }
+    }
+    return false;
   };
 
   const checkLeaveConflict = (
@@ -292,18 +337,21 @@ export default function ScheduleTimeline({
     const { active, over } = event;
     if (!over) {
       setDragOverLeave(false);
+      setDragOverRoomUnavail(false);
       return;
     }
 
     const overData = over.data.current;
     if (!overData || overData.type !== 'drop-zone') {
       setDragOverLeave(false);
+      setDragOverRoomUnavail(false);
       return;
     }
 
     const { date, roomId } = overData;
     if (!date || !roomId) {
       setDragOverLeave(false);
+      setDragOverRoomUnavail(false);
       return;
     }
 
@@ -312,6 +360,7 @@ export default function ScheduleTimeline({
     );
     if (!scheduledScene) {
       setDragOverLeave(false);
+      setDragOverRoomUnavail(false);
       return;
     }
     const scene = scenes.find((s) => s.id === scheduledScene.sceneId);
@@ -322,6 +371,7 @@ export default function ScheduleTimeline({
 
     if (!overRect) {
       setDragOverLeave(false);
+      setDragOverRoomUnavail(false);
       return;
     }
 
@@ -335,13 +385,21 @@ export default function ScheduleTimeline({
     const mins = totalMinutes % 60;
     const timeStr = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 
-    const hasConflict = checkLeaveConflict(date, timeStr, scene);
-    setDragOverLeave(hasConflict);
+    const leaveConflict = checkLeaveConflict(date, timeStr, scene);
+    const roomUnavailConflict = checkRoomUnavailabilityConflict(
+      date,
+      timeStr,
+      scene,
+      roomId
+    );
+    setDragOverLeave(leaveConflict);
+    setDragOverRoomUnavail(roomUnavailConflict);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveId(null);
     setDragOverLeave(false);
+    setDragOverRoomUnavail(false);
 
     const { active, over } = event;
     if (!over) return;
@@ -513,6 +571,68 @@ export default function ScheduleTimeline({
                               );
                             })}
 
+                            {(() => {
+                              const roomUnavails = getRoomUnavailabilitiesForDateAndRoom(
+                                date,
+                                room.id
+                              );
+                              return roomUnavails.map((ru) => {
+                                const ruStartMinutes =
+                                  getTimeMinutesFromMidnight(
+                                    formatTime(ru.startTime)
+                                  ) - TIMELINE_START_HOUR * 60;
+                                const ruEndMinutes =
+                                  getTimeMinutesFromMidnight(
+                                    formatTime(ru.endTime)
+                                  ) - TIMELINE_START_HOUR * 60;
+                                const ruDuration = ruEndMinutes - ruStartMinutes;
+                                const isMaintenance = ru.type === 'maintenance';
+                                const borderColor = isMaintenance
+                                  ? 'border-orange-500/50'
+                                  : 'border-red-500/50';
+                                const bgColor = isMaintenance
+                                  ? 'bg-orange-600/20'
+                                  : 'bg-red-600/15';
+                                const textColor = isMaintenance
+                                  ? 'text-orange-300'
+                                  : 'text-red-300';
+                                const headerBg = isMaintenance
+                                  ? 'bg-orange-900/40'
+                                  : 'bg-red-900/30';
+
+                                return (
+                                  <div
+                                    key={ru.id}
+                                    className={`absolute left-0 right-0 rounded-md pointer-events-none border-2 ${borderColor} ${bgColor} overflow-hidden`}
+                                    style={{
+                                      top: `${Math.max(ruStartMinutes, 0) * PIXELS_PER_MINUTE}px`,
+                                      height: `${Math.max(ruDuration * PIXELS_PER_MINUTE, 32)}px`,
+                                      zIndex: 2,
+                                    }}
+                                  >
+                                    <div className={`flex items-center gap-1.5 px-2 py-1 text-xs ${textColor} ${headerBg} h-full w-full`}>
+                                      {isMaintenance ? (
+                                        <Wrench className="w-3.5 h-3.5 flex-shrink-0" />
+                                      ) : (
+                                        <Ban className="w-3.5 h-3.5 flex-shrink-0" />
+                                      )}
+                                      <span className="font-semibold whitespace-nowrap">
+                                        {getRoomUnavailabilityTypeLabel(ru.type)}
+                                      </span>
+                                      <span className="opacity-70 whitespace-nowrap">
+                                        {formatTime(ru.startTime)}-{formatTime(ru.endTime)}
+                                      </span>
+                                      {ru.reason && (
+                                        <span className="opacity-60 truncate">
+                                          · {ru.reason}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              });
+                            })()}
+
                             <SortableContext
                               items={roomScenes.map((ss) => ss.id)}
                               strategy={rectSortingStrategy}
@@ -554,7 +674,7 @@ export default function ScheduleTimeline({
           {activeId && activeScheduledScene && activeScene ? (
             <div
               className={`rounded-md p-2 opacity-90 shadow-2xl transition-all ${
-                dragOverLeave
+                dragOverLeave || dragOverRoomUnavail
                   ? 'bg-red-600 border-2 border-red-300 animate-pulse ring-4 ring-red-500/50'
                   : conflictingSceneIds.has(activeId)
                   ? 'bg-theater-burgundy-500 border border-theater-burgundy-400'
@@ -569,6 +689,12 @@ export default function ScheduleTimeline({
                 <div className="flex items-center gap-1 mb-1 text-xs text-white bg-red-700 rounded px-1.5 py-0.5 w-fit">
                   <AlertTriangle className="w-3 h-3" />
                   与请假时段冲突
+                </div>
+              )}
+              {dragOverRoomUnavail && (
+                <div className="flex items-center gap-1 mb-1 text-xs text-white bg-orange-700 rounded px-1.5 py-0.5 w-fit">
+                  <AlertTriangle className="w-3 h-3" />
+                  排练厅停用/检修
                 </div>
               )}
               <div className="flex items-start gap-2">

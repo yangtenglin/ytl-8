@@ -76,6 +76,17 @@ export interface RehearsalRoom {
   capacity: number;
 }
 
+export type RoomUnavailabilityType = 'maintenance' | 'closed' | 'other';
+
+export interface RoomUnavailability {
+  id: string;
+  roomId: string;
+  startTime: string;
+  endTime: string;
+  type: RoomUnavailabilityType;
+  reason?: string;
+}
+
 export interface ScheduledScene {
   id: string;
   sceneId: string;
@@ -84,7 +95,7 @@ export interface ScheduledScene {
   endTime: string;
 }
 
-export type ConflictType = 'actor' | 'prop' | 'dependency' | 'room' | 'availability' | 'leave';
+export type ConflictType = 'actor' | 'prop' | 'dependency' | 'room' | 'availability' | 'leave' | 'room-unavailable';
 export type ConflictSeverity = 'error' | 'warning';
 
 export interface Conflict {
@@ -145,6 +156,7 @@ export interface FullData {
   availability: AvailabilitySlot[];
   leavePeriods: LeavePeriod[];
   rooms: RehearsalRoom[];
+  roomUnavailabilities: RoomUnavailability[];
   schedules: Schedule[];
 }
 
@@ -161,6 +173,7 @@ export interface ConflictWeightConfig {
   room: number;
   availability: number;
   leave: number;
+  'room-unavailable': number;
 }
 
 export const CONFLICT_WEIGHTS: ConflictWeightConfig = {
@@ -170,6 +183,7 @@ export const CONFLICT_WEIGHTS: ConflictWeightConfig = {
   room: 70,
   availability: 5,
   leave: 150,
+  'room-unavailable': 200,
 };
 
 export const OPTIMAL_GAP_MINUTES = 15;

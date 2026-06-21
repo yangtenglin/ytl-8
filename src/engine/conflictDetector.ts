@@ -9,6 +9,7 @@ import {
   RehearsalRoom,
   LeavePeriod,
   Role,
+  RoomUnavailability,
 } from '../types';
 import {
   isTimeOverlap,
@@ -345,6 +346,57 @@ function checkLeaveConflicts(
   return conflicts;
 }
 
+function getRoomUnavailabilityLabel(type: string): string {
+  switch (type) {
+    case 'maintenance':
+      return '检修';
+    case 'closed':
+      return '停用';
+    default:
+      return '不可用';
+  }
+}
+
+function checkRoomUnavailabilityConflicts(
+  scheduledScenes: ScheduledScene[],
+  scenes: Scene[],
+  rooms: RehearsalRoom[],
+  roomUnavailabilities: RoomUnavailability[]
+): Conflict[] {
+  const conflicts: Conflict[] = [];
+
+  for (const ss of scheduledScenes) {
+    const scene = scenes.find((s) => s.id === ss.sceneId);
+    if (!scene) continue;
+
+    const room = rooms.find((r) => r.id === ss.roomId);
+    const roomUnavailList = roomUnavailabilities.filter((ru) => ru.roomId === ss.roomId);
+
+    for (const ru of roomUnavailList) {
+      if (isTimeOverlap(ss.startTime, ss.endTime, ru.startTime, ru.endTime)) {
+        const label = getRoomUnavailabilityLabel(ru.type);
+        conflicts.push({
+          id: generateId(),
+          type: 'room-unavailable',
+          severity: 'error',
+          description: `「${room?.name || '排练厅'}」${label}时段与「${scene.name}」冲突（${formatDisplayDateTime(ru.startTime)} - ${formatDisplayDateTime(ru.endTime)}${ru.reason ? ` · ${ru.reason}` : ''}）`,
+          involvedScheduledSceneIds: [ss.id],
+          details: {
+            roomId: ss.roomId,
+            roomName: room?.name || '',
+            sceneId: scene.id,
+            roomUnavailabilityId: ru.id,
+            unavailabilityType: ru.type,
+            reason: ru.reason || '',
+          },
+        });
+      }
+    }
+  }
+
+  return conflicts;
+}
+
 export function detectAllConflicts(
   scheduledScenes: ScheduledScene[],
   scenes: Scene[],
@@ -354,7 +406,8 @@ export function detectAllConflicts(
   availability: AvailabilitySlot[],
   productionId: string,
   leavePeriods: LeavePeriod[] = [],
-  roles: Role[] = []
+  roles: Role[] = [],
+  roomUnavailabilities: RoomUnavailability[] = []
 ): Conflict[] {
   return [
     ...checkActorConflicts(scheduledScenes, scenes, actors, productionId),
@@ -375,6 +428,12 @@ export function detectAllConflicts(
       leavePeriods,
       productionId,
       roles
+    ),
+    ...checkRoomUnavailabilityConflicts(
+      scheduledScenes,
+      scenes,
+      rooms,
+      roomUnavailabilities
     ),
   ];
 }

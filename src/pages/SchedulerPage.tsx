@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import ScheduleTimeline from '../components/ScheduleTimeline';
 import ScorePanel from '../components/ScorePanel';
@@ -14,12 +15,14 @@ import {
   Trash2,
   UserX,
   RefreshCw,
+  Wrench,
 } from 'lucide-react';
 import { format, addDays, parseISO, isSameDay } from 'date-fns';
 import { GenerateOptions, LeavePeriod } from '../types';
 import { formatDisplayDate, formatDisplayDateTime, formatDate, formatTime } from '../utils/time';
 
 export default function SchedulerPage() {
+  const navigate = useNavigate();
   const {
     currentProductionId,
     productions,
@@ -28,6 +31,7 @@ export default function SchedulerPage() {
     rooms,
     availability,
     leavePeriods,
+    roomUnavailabilities,
     schedules,
     currentScheduleId,
     setCurrentSchedule,
@@ -182,6 +186,23 @@ export default function SchedulerPage() {
     );
   }, [leavePeriods, selectedDate]);
 
+  const filteredRoomUnavailabilities = useMemo(() => {
+    return roomUnavailabilities.filter((ru) =>
+      isSameDay(parseISO(ru.startTime), parseISO(selectedDate))
+    );
+  }, [roomUnavailabilities, selectedDate]);
+
+  const getRoomUnavailabilityTypeLabel = (type: string) => {
+    switch (type) {
+      case 'maintenance':
+        return '检修';
+      case 'closed':
+        return '停用';
+      default:
+        return '不可用';
+    }
+  };
+
   if (!currentProductionId) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -279,6 +300,14 @@ export default function SchedulerPage() {
                 请假登记
               </button>
               <button
+                onClick={() => navigate('/productions?tab=rooms')}
+                className="btn-secondary flex items-center gap-2"
+                title="管理排练厅停用/检修时段"
+              >
+                <Wrench className="w-4 h-4" />
+                排练厅停用
+              </button>
+              <button
                 onClick={handleRecalculate}
                 className="btn-ghost flex items-center gap-2"
               >
@@ -334,6 +363,7 @@ export default function SchedulerPage() {
               onDeleteScene={deleteScheduledScene}
               zoomLevel={zoomLevel}
               leavePeriods={leavePeriods}
+              roomUnavailabilities={roomUnavailabilities}
             />
 
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-theater-ink-400 px-2">
@@ -350,8 +380,16 @@ export default function SchedulerPage() {
                   <div className="w-3 h-3 rounded bg-red-600/60 border border-red-400" />
                   请假时段
                 </span>
+                <span className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-orange-600/60 border-2 border-orange-400/60" />
+                  房间检修
+                </span>
+                <span className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-red-600/40 border-2 border-red-400/50" />
+                  房间停用
+                </span>
               </div>
-              <span>拖拽场次块可以调整时间和排练室，拖到请假时段区域将触发红色警示</span>
+              <span>拖拽场次块可调整时间和排练室，拖到停用/请假时段会触发冲突警示</span>
             </div>
 
             {filteredLeavePeriods.length > 0 && (
@@ -398,6 +436,74 @@ export default function SchedulerPage() {
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {filteredRoomUnavailabilities.length > 0 && (
+              <div className="card p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-serif font-semibold text-theater-parchment-200 flex items-center gap-2">
+                    <Wrench className="w-4 h-4 text-orange-400" />
+                    当日排练厅停用/检修
+                  </h4>
+                  <button
+                    onClick={() => navigate('/productions?tab=rooms')}
+                    className="text-xs px-3 py-1 rounded btn-secondary"
+                  >
+                    管理
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {filteredRoomUnavailabilities.map((ru) => {
+                    const room = rooms.find((r) => r.id === ru.roomId);
+                    const isMaintenance = ru.type === 'maintenance';
+                    return (
+                      <div
+                        key={ru.id}
+                        className={`flex items-center justify-between p-3 rounded-lg ${
+                          isMaintenance
+                            ? 'bg-orange-500/10 border border-orange-500/30'
+                            : 'bg-red-500/10 border border-red-500/30'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                              isMaintenance
+                                ? 'bg-orange-500/30'
+                                : 'bg-red-500/30'
+                            }`}
+                          >
+                            <Wrench
+                              className={`w-4 h-4 ${
+                                isMaintenance ? 'text-orange-300' : 'text-red-300'
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <p className="font-medium text-theater-parchment-100">
+                              {room?.name || '未知房间'}
+                              <span
+                                className={`ml-2 text-xs px-2 py-0.5 rounded-full border ${
+                                  isMaintenance
+                                    ? 'border-orange-400/40 text-orange-300'
+                                    : 'border-red-400/40 text-red-300'
+                                }`}
+                              >
+                                {getRoomUnavailabilityTypeLabel(ru.type)}
+                              </span>
+                            </p>
+                            <p className="text-xs text-theater-ink-400">
+                              {formatTime(ru.startTime)} -{' '}
+                              {formatTime(ru.endTime)}
+                              {ru.reason && ` · ${ru.reason}`}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     );

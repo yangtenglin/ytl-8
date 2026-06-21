@@ -11,6 +11,7 @@ import {
   Conflict,
   LeavePeriod,
   Role,
+  RoomUnavailability,
 } from '../types';
 import {
   generateId,
@@ -30,6 +31,7 @@ interface SchedulingContext {
   rooms: RehearsalRoom[];
   availability: AvailabilitySlot[];
   leavePeriods: LeavePeriod[];
+  roomUnavailabilities: RoomUnavailability[];
   roles: Role[];
   productionId: string;
   options: GenerateOptions;
@@ -100,6 +102,10 @@ function generateCandidateAssignments(
 
   for (const date of dates) {
     for (const room of ctx.rooms) {
+      const roomUnavailList = ctx.roomUnavailabilities.filter(
+        (ru) => ru.roomId === room.id
+      );
+
       const dayStartMinutes =
         parseInt(ctx.options.dailyStartTime.split(':')[0]) * 60 +
         parseInt(ctx.options.dailyStartTime.split(':')[1]);
@@ -115,6 +121,16 @@ function generateCandidateAssignments(
 
         const startTime = combineDateAndTime(date, timeStr);
         const endTime = addMinutes(startTime, scene.durationMinutes);
+
+        const hasRoomUnavailabilityConflict = roomUnavailList.some((ru) =>
+          isBefore(parseISO(ru.startTime), endTime) &&
+          isAfter(parseISO(ru.endTime), startTime)
+        );
+
+        if (hasRoomUnavailabilityConflict) {
+          currentMinutes += 30;
+          continue;
+        }
 
         const scheduledScene: ScheduledScene = {
           id: generateId(),
@@ -202,7 +218,8 @@ export function generateScheduleCandidates(
   rooms: RehearsalRoom[],
   availability: AvailabilitySlot[],
   leavePeriods: LeavePeriod[] = [],
-  roles: Role[] = []
+  roles: Role[] = [],
+  roomUnavailabilities: RoomUnavailability[] = []
 ): ScheduleCandidate[] {
   const productionScenes = scenes.filter(
     (s) => s.productionId === options.productionId
@@ -219,6 +236,7 @@ export function generateScheduleCandidates(
     rooms,
     availability,
     leavePeriods,
+    roomUnavailabilities,
     roles,
     productionId: options.productionId,
     options,
@@ -262,7 +280,8 @@ export function generateScheduleCandidates(
         availability,
         options.productionId,
         leavePeriods,
-        roles
+        roles,
+        roomUnavailabilities
       );
       const conflictScore = calculateConflictScore(conflicts);
       const { score: gapScore } = calculateGapScore(scheduledScenes);
@@ -301,7 +320,8 @@ export function recalculateScheduleScores(
   rooms: RehearsalRoom[],
   availability: AvailabilitySlot[],
   leavePeriods: LeavePeriod[] = [],
-  roles: Role[] = []
+  roles: Role[] = [],
+  roomUnavailabilities: RoomUnavailability[] = []
 ): Schedule {
   const conflicts = detectAllConflicts(
     schedule.scheduledScenes,
@@ -312,7 +332,8 @@ export function recalculateScheduleScores(
     availability,
     schedule.productionId,
     leavePeriods,
-    roles
+    roles,
+    roomUnavailabilities
   );
   const conflictScore = calculateConflictScore(conflicts);
   const { score: gapScore } = calculateGapScore(schedule.scheduledScenes);

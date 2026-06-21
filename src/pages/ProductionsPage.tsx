@@ -12,9 +12,15 @@ import {
   X,
   Check,
   Link2,
+  Home,
+  Wrench,
+  Ban,
+  AlertCircle,
 } from 'lucide-react';
-import { Scene, Role, Prop } from '../types';
+import { Scene, Role, Prop, RehearsalRoom, RoomUnavailability, RoomUnavailabilityType } from '../types';
 import { useNavigate } from 'react-router-dom';
+import { formatDisplayDateTime, formatDate, formatTime } from '../utils/time';
+import { parseISO, isSameDay } from 'date-fns';
 
 export default function ProductionsPage() {
   const navigate = useNavigate();
@@ -40,6 +46,14 @@ export default function ProductionsPage() {
     deleteProp,
     getPropAvailableQuantity,
     getPropBorrowedQuantity,
+    rooms,
+    addRoom,
+    updateRoom,
+    deleteRoom,
+    roomUnavailabilities,
+    addRoomUnavailability,
+    updateRoomUnavailability,
+    deleteRoomUnavailability,
   } = useAppStore();
 
   const [showProductionModal, setShowProductionModal] = useState(false);
@@ -49,7 +63,7 @@ export default function ProductionsPage() {
     description: string;
   }>({ title: '', description: '' });
 
-  const [activeTab, setActiveTab] = useState<'scenes' | 'roles' | 'props'>(
+  const [activeTab, setActiveTab] = useState<'scenes' | 'roles' | 'props' | 'rooms'>(
     'scenes'
   );
   const [showSceneModal, setShowSceneModal] = useState(false);
@@ -78,6 +92,34 @@ export default function ProductionsPage() {
     location: '',
     description: '',
   });
+
+  const [showRoomModal, setShowRoomModal] = useState(false);
+  const [editingRoom, setEditingRoom] = useState<Partial<RehearsalRoom> & { id?: string }>({
+    name: '',
+    capacity: 10,
+  });
+
+  const [showRoomUnavailModal, setShowRoomUnavailModal] = useState(false);
+  const [editingRoomUnavailId, setEditingRoomUnavailId] = useState<string | null>(null);
+  const [roomUnavailForm, setRoomUnavailForm] = useState<{
+    roomId: string;
+    startDate: string;
+    startTime: string;
+    endDate: string;
+    endTime: string;
+    type: RoomUnavailabilityType;
+    reason: string;
+  }>({
+    roomId: '',
+    startDate: new Date().toISOString().split('T')[0],
+    startTime: '09:00',
+    endDate: new Date().toISOString().split('T')[0],
+    endTime: '18:00',
+    type: 'maintenance',
+    reason: '',
+  });
+
+  const [roomsSelectedRoomId, setRoomsSelectedRoomId] = useState<string | null>(null);
 
   const currentProduction = useMemo(
     () => productions.find((p) => p.id === currentProductionId),
@@ -220,6 +262,115 @@ export default function ProductionsPage() {
     return arr.includes(item) ? arr.filter((i) => i !== item) : [...arr, item];
   };
 
+  const handleSaveRoom = () => {
+    if (!editingRoom.name?.trim()) return;
+
+    const roomData = {
+      name: editingRoom.name,
+      capacity: editingRoom.capacity || 10,
+    };
+
+    if (editingRoom.id) {
+      updateRoom(editingRoom.id, roomData);
+    } else {
+      addRoom(roomData);
+    }
+    setShowRoomModal(false);
+    setEditingRoom({ name: '', capacity: 10 });
+  };
+
+  const handleEditRoom = (room: RehearsalRoom) => {
+    setEditingRoom({ ...room });
+    setShowRoomModal(true);
+  };
+
+  const handleOpenRoomUnavailModal = (record?: RoomUnavailability) => {
+    if (record) {
+      setEditingRoomUnavailId(record.id);
+      setRoomUnavailForm({
+        roomId: record.roomId,
+        startDate: formatDate(record.startTime),
+        startTime: formatTime(record.startTime),
+        endDate: formatDate(record.endTime),
+        endTime: formatTime(record.endTime),
+        type: record.type,
+        reason: record.reason || '',
+      });
+    } else {
+      setEditingRoomUnavailId(null);
+      setRoomUnavailForm({
+        roomId: roomsSelectedRoomId || rooms[0]?.id || '',
+        startDate: new Date().toISOString().split('T')[0],
+        startTime: '09:00',
+        endDate: new Date().toISOString().split('T')[0],
+        endTime: '18:00',
+        type: 'maintenance',
+        reason: '',
+      });
+    }
+    setShowRoomUnavailModal(true);
+  };
+
+  const handleSaveRoomUnavail = () => {
+    if (!roomUnavailForm.roomId) return;
+
+    const startISO = `${roomUnavailForm.startDate}T${roomUnavailForm.startTime}:00`;
+    const endISO = `${roomUnavailForm.endDate}T${roomUnavailForm.endTime}:00`;
+
+    if (editingRoomUnavailId) {
+      updateRoomUnavailability(editingRoomUnavailId, {
+        roomId: roomUnavailForm.roomId,
+        startTime: startISO,
+        endTime: endISO,
+        type: roomUnavailForm.type,
+        reason: roomUnavailForm.reason,
+      });
+    } else {
+      addRoomUnavailability({
+        roomId: roomUnavailForm.roomId,
+        startTime: startISO,
+        endTime: endISO,
+        type: roomUnavailForm.type,
+        reason: roomUnavailForm.reason,
+      });
+    }
+    setShowRoomUnavailModal(false);
+    setEditingRoomUnavailId(null);
+  };
+
+  const handleDeleteRoomUnavail = (id: string) => {
+    deleteRoomUnavailability(id);
+  };
+
+  const getRoomUnavailabilityTypeLabel = (type: RoomUnavailabilityType) => {
+    switch (type) {
+      case 'maintenance':
+        return '检修';
+      case 'closed':
+        return '停用';
+      default:
+        return '其他';
+    }
+  };
+
+  const getRoomUnavailabilityTypeColor = (type: RoomUnavailabilityType) => {
+    switch (type) {
+      case 'maintenance':
+        return 'bg-orange-600/20 text-orange-300 border-orange-500/30';
+      case 'closed':
+        return 'bg-red-600/20 text-red-300 border-red-500/30';
+      default:
+        return 'bg-gray-600/20 text-gray-300 border-gray-500/30';
+    }
+  };
+
+  const selectedRoomUnavailabilities = useMemo(() => {
+    if (!roomsSelectedRoomId) return [];
+    return roomUnavailabilities
+      .filter((ru) => ru.roomId === roomsSelectedRoomId)
+      .sort((a, b) => parseISO(a.startTime).getTime() - parseISO(b.startTime).getTime());
+  }, [roomUnavailabilities, roomsSelectedRoomId]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -340,11 +491,12 @@ export default function ProductionsPage() {
                 </button>
               </div>
 
-              <div className="flex gap-2 mb-6 border-b border-theater-ink-600">
+              <div className="flex gap-2 mb-6 border-b border-theater-ink-600 flex-wrap">
                 {[
                   { id: 'scenes', label: '场次', icon: Clock },
                   { id: 'roles', label: '角色', icon: Users },
                   { id: 'props', label: '道具', icon: Package },
+                  { id: 'rooms', label: '排练厅', icon: Home },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -632,6 +784,211 @@ export default function ProductionsPage() {
                         <p>暂未添加道具</p>
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'rooms' && (
+                <div>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-1">
+                      <div className="flex justify-between items-center mb-4">
+                        <h4 className="font-serif font-semibold text-theater-parchment-200 flex items-center gap-2">
+                          <Home className="w-4 h-4 text-theater-gold-400" />
+                          排练厅列表
+                        </h4>
+                        <button
+                          onClick={() => {
+                            setEditingRoom({ name: '', capacity: 10 });
+                            setShowRoomModal(true);
+                          }}
+                          className="btn-secondary flex items-center gap-2 text-sm py-1.5 px-3"
+                        >
+                          <Plus className="w-4 h-4" />
+                          添加
+                        </button>
+                      </div>
+
+                      <div className="space-y-2">
+                        {rooms.map((room) => {
+                          const unavailCount = roomUnavailabilities.filter(
+                            (ru) => ru.roomId === room.id
+                          ).length;
+                          return (
+                            <div
+                              key={room.id}
+                              onClick={() => setRoomsSelectedRoomId(room.id)}
+                              className={`card p-3 cursor-pointer transition-all ${
+                                roomsSelectedRoomId === room.id
+                                  ? 'border-theater-gold-500/60 bg-theater-burgundy-900/30'
+                                  : 'hover:bg-theater-ink-700/50'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-8 h-8 rounded-lg bg-theater-gold-500/10 flex items-center justify-center">
+                                    <Home className="w-4 h-4 text-theater-gold-400" />
+                                  </div>
+                                  <div>
+                                    <h5 className="font-medium text-theater-parchment-100 text-sm">
+                                      {room.name}
+                                    </h5>
+                                    <p className="text-xs text-theater-ink-400">
+                                      容量: {room.capacity} 人
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  {unavailCount > 0 && (
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-orange-600/20 text-orange-300 border border-orange-500/30">
+                                      {unavailCount} 条停用
+                                    </span>
+                                  )}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditRoom(room);
+                                    }}
+                                    className="p-1 rounded hover:bg-theater-ink-600 text-theater-ink-300"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (confirm(`确定要删除「${room.name}」吗？相关停用记录也会被清除。`)) {
+                                        deleteRoom(room.id);
+                                        if (roomsSelectedRoomId === room.id) {
+                                          setRoomsSelectedRoomId(null);
+                                        }
+                                      }
+                                    }}
+                                    className="p-1 rounded hover:bg-theater-burgundy-500/30 text-theater-ink-300 hover:text-theater-burgundy-400"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {rooms.length === 0 && (
+                          <div className="text-center py-8 text-theater-ink-400">
+                            <Home className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                            <p>暂无排练厅</p>
+                            <p className="text-xs mt-1">点击右上角添加排练厅</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="lg:col-span-2">
+                      {roomsSelectedRoomId ? (
+                        (() => {
+                          const room = rooms.find((r) => r.id === roomsSelectedRoomId);
+                          return (
+                            <div>
+                              <div className="flex justify-between items-center mb-4">
+                                <div>
+                                  <h4 className="font-serif font-semibold text-theater-parchment-200">
+                                    {room?.name} - 停用/检修记录
+                                  </h4>
+                                  <p className="text-xs text-theater-ink-400 mt-1">
+                                    自动排期会避开这些时段，已安排场次会标记为冲突
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => handleOpenRoomUnavailModal()}
+                                  className="btn-secondary flex items-center gap-2 text-sm py-1.5 px-3"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                  新增停用记录
+                                </button>
+                              </div>
+
+                              <div className="space-y-2">
+                                {selectedRoomUnavailabilities.map((record) => (
+                                  <div
+                                    key={record.id}
+                                    className={`card p-3 border ${getRoomUnavailabilityTypeColor(record.type)}`}
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <span
+                                            className={`text-xs px-2 py-0.5 rounded-full border ${getRoomUnavailabilityTypeColor(record.type)}`}
+                                          >
+                                            {record.type === 'maintenance' && (
+                                              <Wrench className="w-3 h-3 inline mr-1" />
+                                            )}
+                                            {record.type === 'closed' && (
+                                              <Ban className="w-3 h-3 inline mr-1" />
+                                            )}
+                                            {getRoomUnavailabilityTypeLabel(record.type)}
+                                          </span>
+                                        </div>
+                                        <div className="text-sm text-theater-parchment-200">
+                                          <div className="flex items-center gap-1">
+                                            <AlertCircle className="w-3.5 h-3.5 text-theater-ink-400" />
+                                            <span>
+                                              {formatDisplayDateTime(record.startTime)} - {formatDisplayDateTime(record.endTime)}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        {record.reason && (
+                                          <p className="text-xs text-theater-ink-400 mt-1.5 pl-5">
+                                            原因: {record.reason}
+                                          </p>
+                                        )}
+                                      </div>
+                                      <div className="flex gap-1 flex-shrink-0">
+                                        <button
+                                          onClick={() => handleOpenRoomUnavailModal(record)}
+                                          className="p-1.5 rounded hover:bg-theater-ink-600 text-theater-parchment-300"
+                                        >
+                                          <Edit2 className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            if (confirm('确定要删除这条停用记录吗？')) {
+                                              handleDeleteRoomUnavail(record.id);
+                                            }
+                                          }}
+                                          className="p-1.5 rounded hover:bg-red-500/20 text-theater-parchment-300 hover:text-red-400"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+
+                                {selectedRoomUnavailabilities.length === 0 && (
+                                  <div className="card p-8 text-center text-theater-ink-400">
+                                    <Wrench className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                                    <p>暂无停用记录</p>
+                                    <p className="text-xs mt-1">
+                                      点击右上角「新增停用记录」可标记检修或停用时段
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <div className="card p-8 h-full flex items-center justify-center text-center text-theater-ink-400">
+                          <div>
+                            <Home className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                            <p>请从左侧选择一个排练厅</p>
+                            <p className="text-xs mt-1">
+                              可以管理排练厅的停用和检修记录
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -969,6 +1326,165 @@ export default function ProductionsPage() {
                     ...editingProp,
                     description: e.target.value,
                   })
+                }
+              />
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showRoomModal && (
+        <Modal
+          title={editingRoom.id ? '编辑排练厅' : '添加排练厅'}
+          onClose={() => setShowRoomModal(false)}
+          onSave={handleSaveRoom}
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="input-label">排练厅名称</label>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="例如：A排练厅"
+                value={editingRoom.name || ''}
+                onChange={(e) =>
+                  setEditingRoom({ ...editingRoom, name: e.target.value })
+                }
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="input-label">容纳人数</label>
+              <input
+                type="number"
+                min="1"
+                className="input-field"
+                value={editingRoom.capacity || 10}
+                onChange={(e) =>
+                  setEditingRoom({
+                    ...editingRoom,
+                    capacity: parseInt(e.target.value) || 10,
+                  })
+                }
+              />
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showRoomUnavailModal && (
+        <Modal
+          title={editingRoomUnavailId ? '编辑停用记录' : '新增停用/检修记录'}
+          onClose={() => {
+            setShowRoomUnavailModal(false);
+            setEditingRoomUnavailId(null);
+          }}
+          onSave={handleSaveRoomUnavail}
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="input-label">选择排练厅</label>
+              <select
+                className="input-field"
+                value={roomUnavailForm.roomId}
+                onChange={(e) =>
+                  setRoomUnavailForm({ ...roomUnavailForm, roomId: e.target.value })
+                }
+              >
+                {rooms.map((room) => (
+                  <option key={room.id} value={room.id}>
+                    {room.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="input-label">类型</label>
+              <div className="flex gap-2">
+                {[
+                  { value: 'maintenance' as RoomUnavailabilityType, label: '检修', icon: Wrench },
+                  { value: 'closed' as RoomUnavailabilityType, label: '停用', icon: Ban },
+                  { value: 'other' as RoomUnavailabilityType, label: '其他', icon: AlertCircle },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() =>
+                      setRoomUnavailForm({ ...roomUnavailForm, type: opt.value })
+                    }
+                    className={`flex-1 px-3 py-2 rounded-md text-sm flex items-center justify-center gap-1.5 transition-all border ${
+                      roomUnavailForm.type === opt.value
+                        ? 'bg-theater-burgundy-700/60 border-theater-burgundy-500/60 text-theater-parchment-100'
+                        : 'bg-theater-ink-700/50 border-theater-ink-600/50 text-theater-parchment-300 hover:bg-theater-ink-700'
+                    }`}
+                  >
+                    <opt.icon className="w-4 h-4" />
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="input-label">开始日期</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={roomUnavailForm.startDate}
+                  onChange={(e) =>
+                    setRoomUnavailForm({ ...roomUnavailForm, startDate: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <label className="input-label">开始时间</label>
+                <input
+                  type="time"
+                  className="input-field"
+                  value={roomUnavailForm.startTime}
+                  onChange={(e) =>
+                    setRoomUnavailForm({ ...roomUnavailForm, startTime: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="input-label">结束日期</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={roomUnavailForm.endDate}
+                  onChange={(e) =>
+                    setRoomUnavailForm({ ...roomUnavailForm, endDate: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <label className="input-label">结束时间</label>
+                <input
+                  type="time"
+                  className="input-field"
+                  value={roomUnavailForm.endTime}
+                  onChange={(e) =>
+                    setRoomUnavailForm({ ...roomUnavailForm, endTime: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="input-label">原因（可选）</label>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="例如：设备检修、装修改造、场地占用等"
+                value={roomUnavailForm.reason}
+                onChange={(e) =>
+                  setRoomUnavailForm({ ...roomUnavailForm, reason: e.target.value })
                 }
               />
             </div>
